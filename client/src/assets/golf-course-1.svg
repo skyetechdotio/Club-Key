@@ -1,0 +1,31 @@
+<svg width="800" height="600" viewBox="0 0 800 600" xmlns="http://www.w3.org/2000/svg">
+  <!-- Base rectangular frame representing a photograph -->
+  <rect width="800" height="600" fill="#f0f0f0"/>
+  
+  <!-- Simplified representation of a golf course landscape -->
+  <rect y="350" width="800" height="250" fill="#3d8c40"/> <!-- Fairway -->
+  <rect y="240" width="800" height="110" fill="#87c38f"/> <!-- Rough -->
+  <rect y="0" width="800" height="240" fill="#87ceeb"/> <!-- Sky -->
+  
+  <!-- Water hazard -->
+  <ellipse cx="600" cy="420" rx="120" ry="60" fill="#1e90ff"/>
+  
+  <!-- Sand bunkers -->
+  <ellipse cx="200" cy="380" rx="50" ry="20" fill="#f5deb3"/>
+  <ellipse cx="450" cy="400" rx="40" ry="15" fill="#f5deb3"/>
+  
+  <!-- Flag -->
+  <line x1="700" y1="380" x2="700" y2="320" stroke="#000" stroke-width="2"/>
+  <polygon points="700,320 730,330 700,340" fill="#ff0000"/>
+  
+  <!-- Trees and landscape elements as simplified shapes -->
+  <circle cx="100" cy="280" r="40" fill="#2e8b57"/> <!-- Tree -->
+  <circle cx="150" cy="270" r="35" fill="#2e8b57"/> <!-- Tree -->
+  <circle cx="300" cy="260" r="45" fill="#2e8b57"/> <!-- Tree -->
+  <circle cx="650" cy="290" r="50" fill="#2e8b57"/> <!-- Tree -->
+  
+  <!-- Caption indicating this is a placeholder/illustration -->
+  <text x="400" y="580" font-family="Arial" font-size="24" text-anchor="middle" fill="#333">
+    Golf Course Stock Photo Placeholder
+  </text>
+</svg>
