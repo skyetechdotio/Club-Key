@@ -1,0 +1,84 @@
+---
+description: When the user asks for help with Repomix or wants to generate a Repomix output for an LLM, use the following guidelines to construct the appropriate commands or provide suggestions
+globs: 
+alwaysApply: false
+---
+# This rule activates when working with projects where Repomix might be relevant
+type: UserRule
+name: Repomix CLI Assistant
+globs:
+  - "**/*.js"
+  - "**/*.ts"
+  - "**/*.jsx"
+  - "**/*.tsx"
+  - "**/*.vue"
+  - "**/*.py"
+  - "**/*.go"
+  - "**/*.java"
+  - "**/*.rb"
+  - "**/package.json"
+  - "**/repomix.config.json"
+
+---
+
+## Repomix CLI Assistant Guidelines
+
+When the user asks for help with Repomix or wants to generate a Repomix output for an LLM, use the following guidelines to construct the appropriate commands or provide suggestions:
+
+### 1. Full Project Scan
+- When the user requests to "repomix the project," "run a full repomix," "repomix all files," or similar:
+  - Primary command: `repomix`
+  - This generates a `repomix-output.xml` file by default
+  - Ask if a specific output format is needed (e.g., `--style markdown`)
+  - Check if a `repomix.config.json` might already define output preferences
+
+### 2. Targeted Scans
+- For specific parts of a project (frontend, backend, specific features/directories):
+  - Single directory: `repomix path/to/your/directory`
+    - Example: `repomix frontend/` or `repomix src/features/authentication/`
+  - Multiple files/directories or complex patterns:
+    - Use glob patterns with `--include` flag
+    - Example: `repomix --include "src/features/my-feature/**/*.ts,src/components/related-to-feature/**/*.vue"`
+  - For "extract features and their dependencies" requests:
+    - Ask for clarification on relevant paths or primary files/folders
+    - Help construct appropriate glob patterns
+
+### 3. Code Compression
+- When token count is mentioned as a concern, output is too large for an LLM, or compression is explicitly requested:
+  - **Always offer or include the `--compress` flag**
+  - Example: `repomix --compress` or `repomix path/to/directory --compress`
+  - Proactively suggest: "This selection might result in a high token count. Would you like to enable code compression (`--compress`) to reduce it?"
+
+### 4. Processing Remote Repositories
+- For GitHub URLs or shorthand references like `username/repo`:
+  - Use the `--remote` flag
+  - Recommend `npx` for one-off remote processing
+  - Examples:
+    - `npx repomix --remote https://github.com/yamadashy/repomix`
+    - `npx repomix --remote username/repo-name`
+    - `npx repomix --remote https://github.com/username/repo-name/tree/main/src/app --compress`
+  - Confirm desired output location or if default is acceptable
+
+### 5. General Command Construction
+- Combine options as needed for complex requests
+  - Example: "repomix the frontend of remote repo X, compress it, output as markdown"
+  - Command: `npx repomix --remote https://github.com/user/repo/tree/main/frontend --compress --style markdown --output frontend-compressed.md`
+- Clarify if Repomix is globally installed (`repomix ...`) or if `npx repomix ...` is preferred
+
+### 6. Config File Usage
+- When a `repomix.config.json` exists or is mentioned:
+  - Default behavior: Repomix automatically uses it if in the project root
+  - Specify custom location: `repomix --config path/to/repomix.config.json`
+  - For complex projects: Suggest creating config files for commonly-used scan patterns
+
+### 7. Output Formats
+- Default: XML (`repomix-output.xml`)
+- Markdown: `--style markdown` (recommended for LLM consumption)
+- JSON: `--style json` (useful for programmatic processing)
+- Custom file naming: `--output filename.extension`
+
+### 8. Troubleshooting Guidance
+- For "Permission denied" errors: Suggest `chmod +x` for script files or running with proper permissions
+- For "Command not found": Verify installation with `npx repomix --version` or suggest installation
+- For excessive output size: Suggest more specific targeting with `--include` or enabling `--compress`
+- For timeout issues with remote repos: Recommend cloning first, then running locally

@@ -3729,6 +3729,14 @@ var vite_config_default = defineConfig({
       ]
     }
   },
+  server: {
+    proxy: {
+      "/api": {
+        target: "http://localhost:3001",
+        changeOrigin: true
+      }
+    }
+  },
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "frontend", "src"),
@@ -3737,6 +3745,7 @@ var vite_config_default = defineConfig({
     }
   },
   root: path.resolve(import.meta.dirname, "frontend"),
+  envDir: path.resolve(import.meta.dirname),
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true

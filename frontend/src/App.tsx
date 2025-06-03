@@ -32,7 +32,7 @@ import CookiePolicyPage from "@/pages/cookie-policy";
 import ContactPage from "@/pages/contact";
 import HelpPage from "@/pages/help";
 import AuthModal from "@/components/auth/auth-modal";
-import SanityCheckComponent from "@/components/SanityCheckComponent";
+import SanityCheckComponent from "@/components/_dev_examples/SanityCheckComponent";
 import { Loader2 } from "lucide-react";
 
 // Protected Route component
