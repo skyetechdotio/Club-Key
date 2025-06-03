@@ -28,23 +28,23 @@ __export(schema_exports, {
   insertClubSchema: () => insertClubSchema,
   insertMessageSchema: () => insertMessageSchema,
   insertNotificationSchema: () => insertNotificationSchema,
+  insertProfileSchema: () => insertProfileSchema,
   insertReviewSchema: () => insertReviewSchema,
   insertTeeTimeListingSchema: () => insertTeeTimeListingSchema,
   insertUserClubSchema: () => insertUserClubSchema,
-  insertUserSchema: () => insertUserSchema,
   messages: () => messages,
   notifications: () => notifications,
+  profiles: () => profiles,
   reviews: () => reviews,
   sessions: () => sessions,
   teeTimeListing: () => teeTimeListing,
-  upsertUserSchema: () => upsertUserSchema,
-  userClubs: () => userClubs,
-  users: () => users
+  upsertProfileSchema: () => upsertProfileSchema,
+  userClubs: () => userClubs
 });
-import { pgTable, text, serial, integer, boolean, timestamp, doublePrecision, jsonb, varchar, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, doublePrecision, jsonb, varchar, index, uuid } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-var sessions, users, insertUserSchema, upsertUserSchema, clubs, insertClubSchema, userClubs, insertUserClubSchema, teeTimeListing, insertTeeTimeListingSchema, bookings, insertBookingSchema, reviews, insertReviewSchema, messages, insertMessageSchema, notifications, insertNotificationSchema;
+var sessions, profiles, insertProfileSchema, upsertProfileSchema, clubs, insertClubSchema, userClubs, insertUserClubSchema, teeTimeListing, insertTeeTimeListingSchema, bookings, insertBookingSchema, reviews, insertReviewSchema, messages, insertMessageSchema, notifications, insertNotificationSchema;
 var init_schema = __esm({
   "shared/schema.ts"() {
     "use strict";
@@ -57,54 +57,45 @@ var init_schema = __esm({
       },
       (table) => [index("IDX_session_expire").on(table.expire)]
     );
-    users = pgTable("users", {
-      id: serial("id").primaryKey(),
+    profiles = pgTable("profiles", {
+      id: uuid("id").primaryKey(),
+      // Set by trigger to match auth.users(id)
       username: text("username").unique(),
-      // Keeping for backward compatibility but making optional
-      email: text("email").unique(),
-      password: text("password"),
+      // App-specific username
       firstName: text("first_name"),
       lastName: text("last_name"),
       bio: text("bio"),
       profileImage: text("profile_image"),
       profileImageUrl: text("profile_image_url"),
-      // Profile image URL
       isHost: boolean("is_host").default(false),
       stripeCustomerId: text("stripe_customer_id"),
       stripeConnectId: text("stripe_connect_id"),
-      googleId: text("google_id").unique(),
-      resetToken: text("reset_token"),
-      resetTokenExpiry: timestamp("reset_token_expiry"),
       createdAt: timestamp("created_at").defaultNow(),
       updatedAt: timestamp("updated_at").defaultNow(),
       onboardingCompleted: boolean("onboarding_completed").default(false)
     });
-    insertUserSchema = createInsertSchema(users).pick({
-      email: true,
-      password: true,
+    insertProfileSchema = createInsertSchema(profiles).pick({
+      id: true,
+      // Required: the auth user UUID
       firstName: true,
       lastName: true,
       isHost: true,
       profileImage: true,
       profileImageUrl: true,
-      googleId: true,
       username: true,
-      // Optional, keeping for backward compatibility
       onboardingCompleted: true
     }).extend({
-      // Explicitly mark these fields as optional
+      // Mark fields as optional for manual profile creation
       firstName: z.string().optional(),
       lastName: z.string().optional(),
       profileImage: z.string().optional(),
       profileImageUrl: z.string().optional(),
-      googleId: z.string().optional(),
       username: z.string().optional(),
       isHost: z.boolean().optional(),
       onboardingCompleted: z.boolean().optional()
     });
-    upsertUserSchema = createInsertSchema(users).pick({
+    upsertProfileSchema = createInsertSchema(profiles).pick({
       username: true,
-      email: true,
       firstName: true,
       lastName: true,
       bio: true,
@@ -113,7 +104,7 @@ var init_schema = __esm({
       isHost: true,
       onboardingCompleted: true
     }).extend({
-      // Explicitly mark these fields as optional
+      // All fields optional for updates
       username: z.string().optional(),
       firstName: z.string().optional(),
       lastName: z.string().optional(),
@@ -139,7 +130,7 @@ var init_schema = __esm({
     });
     userClubs = pgTable("user_clubs", {
       id: serial("id").primaryKey(),
-      userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+      userId: uuid("user_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
       clubId: integer("club_id").notNull().references(() => clubs.id, { onDelete: "cascade" }),
       memberSince: timestamp("member_since").defaultNow()
     });
@@ -150,7 +141,7 @@ var init_schema = __esm({
     });
     teeTimeListing = pgTable("tee_time_listings", {
       id: serial("id").primaryKey(),
-      hostId: integer("host_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+      hostId: uuid("host_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
       clubId: integer("club_id").notNull().references(() => clubs.id, { onDelete: "cascade" }),
       date: timestamp("date").notNull(),
       price: doublePrecision("price").notNull(),
@@ -178,7 +169,7 @@ var init_schema = __esm({
     bookings = pgTable("bookings", {
       id: serial("id").primaryKey(),
       teeTimeId: integer("tee_time_id").notNull().references(() => teeTimeListing.id, { onDelete: "cascade" }),
-      guestId: integer("guest_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+      guestId: uuid("guest_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
       numberOfPlayers: integer("number_of_players").notNull(),
       status: text("status").notNull().default("pending"),
       // pending, confirmed, completed, cancelled
@@ -205,9 +196,9 @@ var init_schema = __esm({
     });
     reviews = pgTable("reviews", {
       id: serial("id").primaryKey(),
-      reviewerId: integer("reviewer_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-      targetId: integer("target_id").notNull(),
-      // Can be userId or clubId
+      reviewerId: uuid("reviewer_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
+      targetId: text("target_id").notNull(),
+      // Can be profile UUID or club integer ID (as text)
       targetType: text("target_type").notNull(),
       // "host", "guest", "club"
       bookingId: integer("booking_id").references(() => bookings.id, { onDelete: "set null" }),
@@ -228,8 +219,8 @@ var init_schema = __esm({
     });
     messages = pgTable("messages", {
       id: serial("id").primaryKey(),
-      senderId: integer("sender_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-      receiverId: integer("receiver_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+      senderId: uuid("sender_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
+      receiverId: uuid("receiver_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
       bookingId: integer("booking_id").references(() => bookings.id, { onDelete: "cascade" }),
       content: text("content").notNull(),
       isRead: boolean("is_read").notNull().default(false),
@@ -245,7 +236,7 @@ var init_schema = __esm({
     });
     notifications = pgTable("notifications", {
       id: serial("id").primaryKey(),
-      userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+      userId: uuid("user_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
       title: text("title").notNull(),
       message: text("message").notNull(),
       type: text("type").notNull(),
@@ -268,36 +259,57 @@ var init_schema = __esm({
   }
 });
 
-// server/db.ts
-import { Pool, neonConfig } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-serverless";
-import ws from "ws";
+// backend/db.ts
+import { Pool } from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
 var pool, db;
 var init_db = __esm({
-  "server/db.ts"() {
+  "backend/db.ts"() {
     "use strict";
     init_schema();
-    neonConfig.webSocketConstructor = ws;
     pool = null;
     db = null;
     if (process.env.DATABASE_URL) {
-      pool = new Pool({ connectionString: process.env.DATABASE_URL });
+      pool = new Pool({
+        connectionString: process.env.DATABASE_URL,
+        // Supabase specific configuration
+        ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
+        // Connection pool settings
+        max: 20,
+        // Maximum number of clients in the pool
+        idleTimeoutMillis: 3e4,
+        // Close idle clients after 30 seconds
+        connectionTimeoutMillis: 2e3
+        // Return an error after 2 seconds if connection could not be established
+      });
       db = drizzle(pool, { schema: schema_exports });
+      pool.on("error", (err) => {
+        console.error("Unexpected error on idle client", err);
+        process.exit(-1);
+      });
+      console.log("\u2705 Database connected to Supabase");
     } else {
       console.warn(
         "DATABASE_URL is not set. Database functionality will be disabled. This is for UI testing only."
       );
     }
+    process.on("SIGINT", async () => {
+      if (pool) {
+        console.log("Closing database pool...");
+        await pool.end();
+      }
+      process.exit(0);
+    });
   }
 });
 
-// server/database-storage.ts
+// backend/database-storage.ts
 import { eq, and, or, desc, lte } from "drizzle-orm";
 import connectPg from "connect-pg-simple";
 import session from "express-session";
 var PostgresSessionStore, DatabaseStorage;
 var init_database_storage = __esm({
-  "server/database-storage.ts"() {
+  "backend/database-storage.ts"() {
     "use strict";
     init_db();
     init_schema();
@@ -312,28 +324,27 @@ var init_database_storage = __esm({
         });
       }
       async getUser(id) {
-        const [user] = await db.select().from(users).where(eq(users.id, id));
+        const [user] = await db.select().from(profiles).where(eq(profiles.id, id));
         return user;
       }
       async getUserByUsername(username) {
-        const [user] = await db.select().from(users).where(eq(users.username, username));
+        const [user] = await db.select().from(profiles).where(eq(profiles.username, username));
         return user;
       }
+      // Email lookup - not available in profiles table (handled by Supabase Auth)
       async getUserByEmail(email) {
-        const [user] = await db.select().from(users).where(eq(users.email, email));
-        return user;
+        throw new Error("Email lookup should be handled by Supabase Auth, not profiles table");
       }
+      // Google ID lookup - not available in profiles table (handled by Supabase Auth)
       async getUserByGoogleId(googleId) {
-        const [user] = await db.select().from(users).where(eq(users.googleId, googleId));
-        return user;
+        throw new Error("Google ID lookup should be handled by Supabase Auth, not profiles table");
       }
+      // Reset token lookup - not available in profiles table (handled by Supabase Auth)
       async getUserByResetToken(resetToken) {
-        const [user] = await db.select().from(users).where(eq(users.resetToken, resetToken));
-        return user;
+        throw new Error("Reset token lookup should be handled by Supabase Auth, not profiles table");
       }
-      // Removed getUserByReplitId as it's not needed in our current implementation
       async createUser(insertUser) {
-        const [user] = await db.insert(users).values({
+        const [user] = await db.insert(profiles).values({
           ...insertUser,
           createdAt: /* @__PURE__ */ new Date()
         }).returning();
@@ -346,7 +357,7 @@ var init_database_storage = __esm({
         };
         console.log(`Updating user ${id} with data:`, updateData);
         try {
-          const [updatedUser] = await db.update(users).set(updateData).where(eq(users.id, id)).returning();
+          const [updatedUser] = await db.update(profiles).set(updateData).where(eq(profiles.id, id)).returning();
           console.log(`Updated user ${id} successfully:`, updatedUser);
           return updatedUser;
         } catch (error) {
@@ -364,7 +375,7 @@ var init_database_storage = __esm({
         }
         console.log(`Updating Stripe info for user ${id}:`, updateData);
         try {
-          const [updatedUser] = await db.update(users).set(updateData).where(eq(users.id, id)).returning();
+          const [updatedUser] = await db.update(profiles).set(updateData).where(eq(profiles.id, id)).returning();
           console.log(`Updated Stripe info for user ${id} successfully:`, updatedUser);
           return updatedUser;
         } catch (error) {
@@ -373,24 +384,24 @@ var init_database_storage = __esm({
         }
       }
       async upsertUser(upsertUser) {
-        const userId = typeof upsertUser.id === "number" ? upsertUser.id.toString() : upsertUser.id;
+        const userId = upsertUser.id;
         try {
-          const [updatedUser] = await db.update(users).set({
+          const [updatedUser] = await db.update(profiles).set({
             ...upsertUser,
             updatedAt: /* @__PURE__ */ new Date()
-          }).where(eq(users.id, userId)).returning();
+          }).where(eq(profiles.id, userId)).returning();
           if (updatedUser) {
             return updatedUser;
           }
         } catch (error) {
           console.log("Error updating user:", error);
         }
-        const [newUser] = await db.insert(users).values({
+        const [newUser] = await db.insert(profiles).values({
           ...upsertUser,
           createdAt: /* @__PURE__ */ new Date(),
           updatedAt: /* @__PURE__ */ new Date()
         }).onConflictDoUpdate({
-          target: users.id,
+          target: profiles.id,
           set: {
             ...upsertUser,
             updatedAt: /* @__PURE__ */ new Date()
@@ -592,18 +603,18 @@ var init_database_storage = __esm({
   }
 });
 
-// server/storage.ts
+// backend/storage.ts
 import session2 from "express-session";
 var storage;
 var init_storage = __esm({
-  "server/storage.ts"() {
+  "backend/storage.ts"() {
     "use strict";
     init_database_storage();
     storage = new DatabaseStorage();
   }
 });
 
-// server/notifications/email.ts
+// backend/notifications/email.ts
 import sgMail from "@sendgrid/mail";
 async function sendEmail(params) {
   if (!process.env.SENDGRID_API_KEY) {
@@ -1164,7 +1175,7 @@ async function sendNewMessageNotification(user, senderName, messagePreview) {
   });
 }
 var init_email = __esm({
-  "server/notifications/email.ts"() {
+  "backend/notifications/email.ts"() {
     "use strict";
     if (process.env.SENDGRID_API_KEY) {
       sgMail.setApiKey(process.env.SENDGRID_API_KEY);
@@ -1174,7 +1185,7 @@ var init_email = __esm({
   }
 });
 
-// server/notifications/index.ts
+// backend/notifications/index.ts
 var notifications_exports = {};
 __export(notifications_exports, {
   createNotification: () => createNotification,
@@ -1471,17 +1482,17 @@ async function createNotification(data) {
   }
 }
 var init_notifications = __esm({
-  "server/notifications/index.ts"() {
+  "backend/notifications/index.ts"() {
     "use strict";
     init_storage();
     init_email();
   }
 });
 
-// server/index.ts
+// backend/index.ts
 import express3 from "express";
 
-// server/routes.ts
+// backend/routes.ts
 init_storage();
 import express from "express";
 import { createServer } from "http";
@@ -1489,7 +1500,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import Stripe from "stripe";
 import { z as z2 } from "zod";
 
-// server/booking-service.ts
+// backend/booking-service.ts
 init_storage();
 import schedule from "node-schedule";
 var BookingService = class {
@@ -1667,10 +1678,10 @@ var BookingService = class {
 var bookingService = new BookingService();
 var booking_service_default = bookingService;
 
-// server/routes.ts
+// backend/routes.ts
 init_schema();
 
-// server/routes/notifications.ts
+// backend/routes/notifications.ts
 init_storage();
 init_notifications();
 import { Router } from "express";
@@ -1788,7 +1799,7 @@ router.post("/trigger/message/:id", async (req, res) => {
 });
 var notifications_default = router;
 
-// server/auth.ts
+// backend/auth.ts
 init_storage();
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
@@ -1797,7 +1808,7 @@ import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import connectPg2 from "connect-pg-simple";
 
-// server/notifications/password-reset.ts
+// backend/notifications/password-reset.ts
 init_email();
 async function sendPasswordResetEmail(user, resetToken) {
   if (!user.email) {
@@ -1903,7 +1914,7 @@ async function sendPasswordResetSuccessEmail(user) {
   });
 }
 
-// server/auth.ts
+// backend/auth.ts
 var scryptAsync = promisify(scrypt);
 async function hashPassword(password) {
   const salt = randomBytes(16).toString("hex");
@@ -2121,7 +2132,7 @@ var isHost = (req, res, next) => {
   res.status(403).json({ message: "Access denied" });
 };
 
-// server/routes.ts
+// backend/routes.ts
 if (!process.env.STRIPE_SECRET_KEY) {
   console.error("CRITICAL ERROR: Missing STRIPE_SECRET_KEY environment variable");
 }
@@ -3665,20 +3676,20 @@ async function registerRoutes(app2) {
   });
   const httpServer = createServer(app2);
   const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
-  wss.on("connection", (ws2) => {
+  wss.on("connection", (ws) => {
     let userId = null;
-    ws2.on("message", (message) => {
+    ws.on("message", (message) => {
       try {
         const data = JSON.parse(message.toString());
         if (data.type === "auth" && data.userId) {
           userId = parseInt(data.userId);
-          connections.set(userId, ws2);
+          connections.set(userId, ws);
         }
       } catch (error) {
         console.error("WebSocket message error:", error);
       }
     });
-    ws2.on("close", () => {
+    ws.on("close", () => {
       if (userId !== null) {
         connections.delete(userId);
       }
@@ -3687,7 +3698,7 @@ async function registerRoutes(app2) {
   return httpServer;
 }
 
-// server/vite.ts
+// backend/vite.ts
 import express2 from "express";
 import fs from "fs";
 import path2 from "path";
@@ -3698,6 +3709,8 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+import tailwindcss from "tailwindcss";
+import autoprefixer from "autoprefixer";
 var vite_config_default = defineConfig({
   plugins: [
     react(),
@@ -3708,21 +3721,29 @@ var vite_config_default = defineConfig({
       )
     ] : []
   ],
+  css: {
+    postcss: {
+      plugins: [
+        tailwindcss({ config: path.resolve(import.meta.dirname, "tailwind.config.ts") }),
+        autoprefixer()
+      ]
+    }
+  },
   resolve: {
     alias: {
-      "@": path.resolve(import.meta.dirname, "client", "src"),
+      "@": path.resolve(import.meta.dirname, "frontend", "src"),
       "@shared": path.resolve(import.meta.dirname, "shared"),
       "@assets": path.resolve(import.meta.dirname, "attached_assets")
     }
   },
-  root: path.resolve(import.meta.dirname, "client"),
+  root: path.resolve(import.meta.dirname, "frontend"),
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true
   }
 });
 
-// server/vite.ts
+// backend/vite.ts
 import { nanoid } from "nanoid";
 var viteLogger = createLogger();
 function log(message, source = "express") {
@@ -3760,7 +3781,7 @@ async function setupVite(app2, server) {
       const clientTemplate = path2.resolve(
         import.meta.dirname,
         "..",
-        "client",
+        "frontend",
         "index.html"
       );
       let template = await fs.promises.readFile(clientTemplate, "utf-8");
@@ -3789,7 +3810,7 @@ function serveStatic(app2) {
   });
 }
 
-// server/reminder-service.ts
+// backend/reminder-service.ts
 init_storage();
 init_notifications();
 async function checkReminders() {
@@ -3856,7 +3877,7 @@ function startReminderService() {
   return interval;
 }
 
-// server/index.ts
+// backend/index.ts
 var app = express3();
 var jsonParser = express3.json({ limit: "50mb" });
 var urlEncodedParser = express3.urlencoded({ extended: false, limit: "50mb" });
