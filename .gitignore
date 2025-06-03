@@ -1,0 +1,17 @@
+# SpecStory explanation file
+.specstory/.what-is-this.md
+node_modules
+
+.cursor/rules/1password-cli.mdc
+
+.cursor/rules/repomix.mdc
+
+.cursorindexingignore
+
+.env
+
+.specstory/history/2025-06-03_00-39-migration-of-clubkey-to-supabase.md
+
+.specstory/history/2025-05-21_16-07-implementing-user-logo-change-request.md
+
+.specstory/history/2025-05-18_15-42-local-setup-instructions-for-codebase.md

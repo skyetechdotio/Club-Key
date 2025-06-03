@@ -32,6 +32,7 @@ import CookiePolicyPage from "@/pages/cookie-policy";
 import ContactPage from "@/pages/contact";
 import HelpPage from "@/pages/help";
 import AuthModal from "@/components/auth/auth-modal";
+import SanityCheckComponent from "@/components/SanityCheckComponent";
 import { Loader2 } from "lucide-react";
 
 // Protected Route component
@@ -121,6 +122,10 @@ function Router() {
       <main className={`flex-grow ${hideNavbar || isHomePage ? 'pt-0' : 'pt-4'}`}>
         <Switch>
           <Route path="/" component={Home} />
+          
+          {/* Sanity Check Route for Testing TanStack Query + Supabase Integration */}
+          <Route path="/sanity-check" component={SanityCheckComponent} />
+          
           <Route path="/tee-times" component={TeeTimesPage} />
           <Route path="/tee-times/:id" component={TeeTimeDetailsPage} />
           <Route path="/profile/:id">
