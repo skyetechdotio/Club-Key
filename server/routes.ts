@@ -33,9 +33,16 @@ if (process.env.STRIPE_WEBHOOK_SECRET) {
 }
 
 // Initialize Stripe with the secret key
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: "2023-10-16" as any,
-});
+let stripe: Stripe | null = null;
+if (process.env.STRIPE_SECRET_KEY) {
+  stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+    apiVersion: "2023-10-16" as any,
+  });
+} else {
+  console.warn(
+    "STRIPE_SECRET_KEY is not set. Stripe functionality will be disabled. This is for UI testing only."
+  );
+}
 
 // Active WebSocket connections
 const connections = new Map<number, WebSocket>();

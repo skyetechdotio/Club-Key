@@ -1,5 +1,5 @@
 import { 
-  User, InsertUser, UpsertUser,
+  Profile, InsertProfile, UpsertProfile,
   Club, InsertClub, 
   UserClub, InsertUserClub,
   TeeTimeListing, InsertTeeTimeListing,
@@ -7,7 +7,7 @@ import {
   Review, InsertReview,
   Message, InsertMessage,
   Notification, InsertNotification,
-  users, clubs, userClubs, teeTimeListing, bookings, reviews, messages, notifications
+  profiles, clubs, userClubs, teeTimeListing, bookings, reviews, messages, notifications
 } from "@shared/schema";
 
 import session from "express-session";
@@ -17,64 +17,64 @@ export interface IStorage {
   // Session store
   sessionStore: any;
   
-  // User operations
-  getUser(id: string | number): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  getUserByEmail(email: string): Promise<User | undefined>;
-  getUserByResetToken(resetToken: string): Promise<User | undefined>;
-  getUserByGoogleId(googleId: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
-  updateUser(id: string | number, user: Partial<User>): Promise<User | undefined>;
-  updateUserStripeInfo(id: string | number, stripeInfo: { customerId: string, connectId?: string }): Promise<User | undefined>;
-  upsertUser(user: UpsertUser): Promise<User>;
+  // User operations (now using Profile types)
+  getUser(id: string): Promise<Profile | undefined>;
+  getUserByUsername(username: string): Promise<Profile | undefined>;
+  getUserByEmail(email: string): Promise<Profile | undefined>;
+  getUserByResetToken(resetToken: string): Promise<Profile | undefined>;
+  getUserByGoogleId(googleId: string): Promise<Profile | undefined>;
+  createUser(user: InsertProfile): Promise<Profile>;
+  updateUser(id: string, user: Partial<Profile>): Promise<Profile | undefined>;
+  updateUserStripeInfo(id: string, stripeInfo: { customerId: string, connectId?: string }): Promise<Profile | undefined>;
+  upsertUser(user: UpsertProfile & { id: string }): Promise<Profile>;
   
   // Club operations
   getClub(id: number): Promise<Club | undefined>;
   getClubs(): Promise<Club[]>;
   createClub(club: InsertClub): Promise<Club>;
   
-  // UserClub operations
-  getUserClubs(userId: number): Promise<UserClub[]>;
+  // UserClub operations (user IDs are now UUIDs)
+  getUserClubs(userId: string): Promise<UserClub[]>;
   addUserToClub(userClub: InsertUserClub): Promise<UserClub>;
   
-  // TeeTimeListing operations
+  // TeeTimeListing operations (host IDs are now UUIDs)
   getTeeTimeListing(id: number): Promise<TeeTimeListing | undefined>;
-  getTeeTimeListingsByHostId(hostId: number): Promise<TeeTimeListing[]>;
+  getTeeTimeListingsByHostId(hostId: string): Promise<TeeTimeListing[]>;
   getTeeTimeListingsByClubId(clubId: number): Promise<TeeTimeListing[]>;
   getAvailableTeeTimeListings(): Promise<TeeTimeListing[]>;
   createTeeTimeListing(teeTimeListing: InsertTeeTimeListing): Promise<TeeTimeListing>;
   updateTeeTimeListing(id: number, teeTimeListing: Partial<TeeTimeListing>): Promise<TeeTimeListing | undefined>;
   
-  // Booking operations
+  // Booking operations (guest IDs are now UUIDs)
   getBooking(id: number): Promise<Booking | undefined>;
-  getBookingsByGuestId(guestId: number): Promise<Booking[]>;
+  getBookingsByGuestId(guestId: string): Promise<Booking[]>;
   getBookingsByTeeTimeId(teeTimeId: number): Promise<Booking[]>;
   getBookingsByPaymentIntent(paymentIntentId: string): Promise<Booking[]>;
   createBooking(booking: InsertBooking): Promise<Booking>;
   updateBooking(id: number, booking: Partial<Booking>): Promise<Booking | undefined>;
   updateBookingStatus(id: number, status: string): Promise<Booking | undefined>;
   
-  // Review operations
+  // Review operations (reviewer IDs are now UUIDs)
   getReview(id: number): Promise<Review | undefined>;
-  getReviewsByTargetId(targetId: number, targetType: string): Promise<Review[]>;
-  getReviewsByReviewerId(reviewerId: number): Promise<Review[]>;
+  getReviewsByTargetId(targetId: string, targetType: string): Promise<Review[]>;
+  getReviewsByReviewerId(reviewerId: string): Promise<Review[]>;
   createReview(review: InsertReview): Promise<Review>;
   
-  // Message operations
+  // Message operations (user IDs are now UUIDs)
   getMessage(id: number): Promise<Message | undefined>;
   getMessagesByBookingId(bookingId: number): Promise<Message[]>;
-  getConversation(userOneId: number, userTwoId: number): Promise<Message[]>;
-  getUserMessages(userId: number): Promise<Message[]>;
+  getConversation(userOneId: string, userTwoId: string): Promise<Message[]>;
+  getUserMessages(userId: string): Promise<Message[]>;
   createMessage(message: InsertMessage): Promise<Message>;
   markMessageAsRead(id: number): Promise<Message | undefined>;
   
-  // Notification operations
+  // Notification operations (user IDs are now UUIDs)
   getNotification(id: number): Promise<Notification | undefined>;
-  getNotificationsByUserId(userId: number): Promise<Notification[]>;
-  getUnreadNotificationsByUserId(userId: number): Promise<Notification[]>;
+  getNotificationsByUserId(userId: string): Promise<Notification[]>;
+  getUnreadNotificationsByUserId(userId: string): Promise<Notification[]>;
   createNotification(notification: InsertNotification): Promise<Notification>;
   markNotificationAsRead(id: number): Promise<Notification | undefined>;
-  markAllNotificationsAsRead(userId: number): Promise<void>;
+  markAllNotificationsAsRead(userId: string): Promise<void>;
   
   // Reminder operations
   getRemindersToSend(reminderType: 'one_week' | 'one_day', currentDate: Date): Promise<Booking[]>;
@@ -84,7 +84,7 @@ export interface IStorage {
 }
 
 export class MemStorage implements IStorage {
-  private users: Map<number, User>;
+  private users: Map<number, Profile>;
   private clubs: Map<number, Club>;
   private userClubs: Map<number, UserClub>;
   private teeTimeListings: Map<number, TeeTimeListing>;
@@ -129,42 +129,42 @@ export class MemStorage implements IStorage {
   }
 
   // User operations
-  async getUser(id: number): Promise<User | undefined> {
+  async getUser(id: number): Promise<Profile | undefined> {
     return this.users.get(id);
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
+  async getUserByUsername(username: string): Promise<Profile | undefined> {
     return Array.from(this.users.values()).find(
       (user) => user.username === username,
     );
   }
 
-  async getUserByEmail(email: string): Promise<User | undefined> {
+  async getUserByEmail(email: string): Promise<Profile | undefined> {
     return Array.from(this.users.values()).find(
       (user) => user.email === email,
     );
   }
   
-  async getUserByGoogleId(googleId: string): Promise<User | undefined> {
+  async getUserByGoogleId(googleId: string): Promise<Profile | undefined> {
     return Array.from(this.users.values()).find(
       (user) => user.googleId === googleId,
     );
   }
   
-  async getUserByResetToken(resetToken: string): Promise<User | undefined> {
+  async getUserByResetToken(resetToken: string): Promise<Profile | undefined> {
     return Array.from(this.users.values()).find(
       (user) => user.resetToken === resetToken,
     );
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
+  async createUser(insertUser: InsertProfile): Promise<Profile> {
     const id = this.userCurrentId++;
-    const user: User = { ...insertUser, id, createdAt: new Date() };
+    const user: Profile = { ...insertUser, id, createdAt: new Date() };
     this.users.set(id, user);
     return user;
   }
 
-  async updateUser(id: number, userData: Partial<User>): Promise<User | undefined> {
+  async updateUser(id: number, userData: Partial<Profile>): Promise<Profile | undefined> {
     const user = this.users.get(id);
     if (!user) return undefined;
     
@@ -173,7 +173,7 @@ export class MemStorage implements IStorage {
     return updatedUser;
   }
 
-  async updateUserStripeInfo(id: number, stripeInfo: { customerId: string, connectId?: string }): Promise<User | undefined> {
+  async updateUserStripeInfo(id: number, stripeInfo: { customerId: string, connectId?: string }): Promise<Profile | undefined> {
     const user = this.users.get(id);
     if (!user) return undefined;
     
@@ -186,7 +186,7 @@ export class MemStorage implements IStorage {
     return updatedUser;
   }
   
-  async upsertUser(upsertUser: UpsertUser): Promise<User> {
+  async upsertUser(upsertUser: UpsertProfile & { id: string }): Promise<Profile> {
     const id = typeof upsertUser.id === 'string' ? upsertUser.id : upsertUser.id.toString();
     const existingUser = Array.from(this.users.values()).find(u => u.id === id);
     
@@ -201,7 +201,7 @@ export class MemStorage implements IStorage {
       return updatedUser;
     } else {
       // Create new user
-      const newUser: User = {
+      const newUser: Profile = {
         ...upsertUser,
         isHost: upsertUser.isHost || false,
         createdAt: new Date(),
@@ -229,7 +229,7 @@ export class MemStorage implements IStorage {
   }
 
   // UserClub operations
-  async getUserClubs(userId: number): Promise<UserClub[]> {
+  async getUserClubs(userId: string): Promise<UserClub[]> {
     return Array.from(this.userClubs.values()).filter(
       (userClub) => userClub.userId === userId,
     );
@@ -247,7 +247,7 @@ export class MemStorage implements IStorage {
     return this.teeTimeListings.get(id);
   }
 
-  async getTeeTimeListingsByHostId(hostId: number): Promise<TeeTimeListing[]> {
+  async getTeeTimeListingsByHostId(hostId: string): Promise<TeeTimeListing[]> {
     return Array.from(this.teeTimeListings.values()).filter(
       (teeTimeListing) => teeTimeListing.hostId === hostId,
     );
@@ -291,7 +291,7 @@ export class MemStorage implements IStorage {
     return this.bookings.get(id);
   }
 
-  async getBookingsByGuestId(guestId: number): Promise<Booking[]> {
+  async getBookingsByGuestId(guestId: string): Promise<Booking[]> {
     return Array.from(this.bookings.values()).filter(
       (booking) => booking.guestId === guestId,
     );
@@ -348,13 +348,13 @@ export class MemStorage implements IStorage {
     return this.reviews.get(id);
   }
 
-  async getReviewsByTargetId(targetId: number, targetType: string): Promise<Review[]> {
+  async getReviewsByTargetId(targetId: string, targetType: string): Promise<Review[]> {
     return Array.from(this.reviews.values()).filter(
       (review) => review.targetId === targetId && review.targetType === targetType,
     );
   }
 
-  async getReviewsByReviewerId(reviewerId: number): Promise<Review[]> {
+  async getReviewsByReviewerId(reviewerId: string): Promise<Review[]> {
     return Array.from(this.reviews.values()).filter(
       (review) => review.reviewerId === reviewerId,
     );
@@ -378,7 +378,7 @@ export class MemStorage implements IStorage {
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   }
 
-  async getConversation(userOneId: number, userTwoId: number): Promise<Message[]> {
+  async getConversation(userOneId: string, userTwoId: string): Promise<Message[]> {
     return Array.from(this.messages.values())
       .filter(message => 
         (message.senderId === userOneId && message.receiverId === userTwoId) ||
@@ -387,7 +387,7 @@ export class MemStorage implements IStorage {
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   }
   
-  async getUserMessages(userId: number): Promise<Message[]> {
+  async getUserMessages(userId: string): Promise<Message[]> {
     return Array.from(this.messages.values())
       .filter(message => 
         message.senderId === userId || message.receiverId === userId
@@ -421,13 +421,13 @@ export class MemStorage implements IStorage {
     return this.notifications.get(id);
   }
 
-  async getNotificationsByUserId(userId: number): Promise<Notification[]> {
+  async getNotificationsByUserId(userId: string): Promise<Notification[]> {
     return Array.from(this.notifications.values())
       .filter(notification => notification.userId === userId)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()); // newest first
   }
 
-  async getUnreadNotificationsByUserId(userId: number): Promise<Notification[]> {
+  async getUnreadNotificationsByUserId(userId: string): Promise<Notification[]> {
     return Array.from(this.notifications.values())
       .filter(notification => notification.userId === userId && !notification.isRead)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()); // newest first
@@ -453,7 +453,7 @@ export class MemStorage implements IStorage {
     return updatedNotification;
   }
 
-  async markAllNotificationsAsRead(userId: number): Promise<void> {
+  async markAllNotificationsAsRead(userId: string): Promise<void> {
     const userNotifications = await this.getNotificationsByUserId(userId);
     
     for (const notification of userNotifications) {

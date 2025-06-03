@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, doublePrecision, jsonb, varchar, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, doublePrecision, jsonb, varchar, index, uuid } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -13,58 +13,49 @@ export const sessions = pgTable(
   (table) => [index("IDX_session_expire").on(table.expire)],
 );
 
-// User schema
-export const users = pgTable("users", {
-  id: serial("id").primaryKey(), 
-  username: text("username").unique(), // Keeping for backward compatibility but making optional
-  email: text("email").unique(),
-  password: text("password"),
+// Profiles table - links to Supabase auth.users via trigger
+export const profiles = pgTable("profiles", {
+  id: uuid("id").primaryKey(), // Set by trigger to match auth.users(id)
+  username: text("username").unique(), // App-specific username
   firstName: text("first_name"),
   lastName: text("last_name"),
   bio: text("bio"),
   profileImage: text("profile_image"),
-  profileImageUrl: text("profile_image_url"), // Profile image URL
+  profileImageUrl: text("profile_image_url"),
   isHost: boolean("is_host").default(false),
   stripeCustomerId: text("stripe_customer_id"),
   stripeConnectId: text("stripe_connect_id"),
-  googleId: text("google_id").unique(),
-  resetToken: text("reset_token"),
-  resetTokenExpiry: timestamp("reset_token_expiry"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   onboardingCompleted: boolean("onboarding_completed").default(false),
 });
 
-export const insertUserSchema = createInsertSchema(users)
+export const insertProfileSchema = createInsertSchema(profiles)
   .pick({
-    email: true,
-    password: true,
+    id: true, // Required: the auth user UUID
     firstName: true,
     lastName: true,
     isHost: true,
     profileImage: true,
     profileImageUrl: true,
-    googleId: true,
-    username: true, // Optional, keeping for backward compatibility
+    username: true,
     onboardingCompleted: true,
   })
   .extend({
-    // Explicitly mark these fields as optional
+    // Mark fields as optional for manual profile creation
     firstName: z.string().optional(),
     lastName: z.string().optional(),
     profileImage: z.string().optional(),
     profileImageUrl: z.string().optional(),
-    googleId: z.string().optional(),
     username: z.string().optional(),
     isHost: z.boolean().optional(),
     onboardingCompleted: z.boolean().optional(),
   });
 
-// Schema for standard user updates
-export const upsertUserSchema = createInsertSchema(users)
+// Schema for profile updates (excludes id since it's immutable)
+export const upsertProfileSchema = createInsertSchema(profiles)
   .pick({
     username: true,
-    email: true,
     firstName: true,
     lastName: true,
     bio: true,
@@ -74,7 +65,7 @@ export const upsertUserSchema = createInsertSchema(users)
     onboardingCompleted: true,
   })
   .extend({
-    // Explicitly mark these fields as optional
+    // All fields optional for updates
     username: z.string().optional(),
     firstName: z.string().optional(),
     lastName: z.string().optional(),
@@ -105,7 +96,7 @@ export const insertClubSchema = createInsertSchema(clubs).pick({
 // Relationship between users and clubs (for member hosts)
 export const userClubs = pgTable("user_clubs", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
   clubId: integer("club_id").notNull().references(() => clubs.id, { onDelete: "cascade" }),
   memberSince: timestamp("member_since").defaultNow(),
 });
@@ -119,7 +110,7 @@ export const insertUserClubSchema = createInsertSchema(userClubs).pick({
 // Tee time listings
 export const teeTimeListing = pgTable("tee_time_listings", {
   id: serial("id").primaryKey(),
-  hostId: integer("host_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  hostId: uuid("host_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
   clubId: integer("club_id").notNull().references(() => clubs.id, { onDelete: "cascade" }),
   date: timestamp("date").notNull(),
   price: doublePrecision("price").notNull(),
@@ -152,7 +143,7 @@ export const insertTeeTimeListingSchema = createInsertSchema(teeTimeListing)
 export const bookings = pgTable("bookings", {
   id: serial("id").primaryKey(),
   teeTimeId: integer("tee_time_id").notNull().references(() => teeTimeListing.id, { onDelete: "cascade" }),
-  guestId: integer("guest_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  guestId: uuid("guest_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
   numberOfPlayers: integer("number_of_players").notNull(),
   status: text("status").notNull().default("pending"), // pending, confirmed, completed, cancelled
   stripePaymentIntentId: text("stripe_payment_intent_id"),
@@ -183,8 +174,8 @@ export const insertBookingSchema = createInsertSchema(bookings)
 // Reviews for hosts, guests and clubs
 export const reviews = pgTable("reviews", {
   id: serial("id").primaryKey(),
-  reviewerId: integer("reviewer_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  targetId: integer("target_id").notNull(), // Can be userId or clubId
+  reviewerId: uuid("reviewer_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
+  targetId: text("target_id").notNull(), // Can be profile UUID or club integer ID (as text)
   targetType: text("target_type").notNull(), // "host", "guest", "club"
   bookingId: integer("booking_id").references(() => bookings.id, { onDelete: "set null" }),
   rating: integer("rating").notNull(),
@@ -209,8 +200,8 @@ export const insertReviewSchema = createInsertSchema(reviews)
 // Messages between hosts and guests
 export const messages = pgTable("messages", {
   id: serial("id").primaryKey(),
-  senderId: integer("sender_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  receiverId: integer("receiver_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  senderId: uuid("sender_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
+  receiverId: uuid("receiver_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
   bookingId: integer("booking_id").references(() => bookings.id, { onDelete: "cascade" }),
   content: text("content").notNull(),
   isRead: boolean("is_read").notNull().default(false),
@@ -228,33 +219,10 @@ export const insertMessageSchema = createInsertSchema(messages)
     bookingId: z.number().optional(),
   });
 
-// Types
-export type InsertUser = z.infer<typeof insertUserSchema>;
-export type UpsertUser = z.infer<typeof upsertUserSchema>;
-export type User = typeof users.$inferSelect;
-
-export type InsertClub = z.infer<typeof insertClubSchema>;
-export type Club = typeof clubs.$inferSelect;
-
-export type InsertUserClub = z.infer<typeof insertUserClubSchema>;
-export type UserClub = typeof userClubs.$inferSelect;
-
-export type InsertTeeTimeListing = z.infer<typeof insertTeeTimeListingSchema>;
-export type TeeTimeListing = typeof teeTimeListing.$inferSelect;
-
-export type InsertBooking = z.infer<typeof insertBookingSchema>;
-export type Booking = typeof bookings.$inferSelect;
-
-export type InsertReview = z.infer<typeof insertReviewSchema>;
-export type Review = typeof reviews.$inferSelect;
-
-export type InsertMessage = z.infer<typeof insertMessageSchema>;
-export type Message = typeof messages.$inferSelect;
-
 // Notifications
 export const notifications = pgTable("notifications", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   message: text("message").notNull(),
   type: text("type").notNull(), // "booking", "message", "system"
@@ -275,6 +243,29 @@ export const insertNotificationSchema = createInsertSchema(notifications)
   .extend({
     isRead: z.boolean().optional().default(false),
   });
+
+// Type exports
+export type InsertProfile = z.infer<typeof insertProfileSchema>;
+export type UpsertProfile = z.infer<typeof upsertProfileSchema>;
+export type Profile = typeof profiles.$inferSelect;
+
+export type InsertClub = z.infer<typeof insertClubSchema>;
+export type Club = typeof clubs.$inferSelect;
+
+export type InsertUserClub = z.infer<typeof insertUserClubSchema>;
+export type UserClub = typeof userClubs.$inferSelect;
+
+export type InsertTeeTimeListing = z.infer<typeof insertTeeTimeListingSchema>;
+export type TeeTimeListing = typeof teeTimeListing.$inferSelect;
+
+export type InsertBooking = z.infer<typeof insertBookingSchema>;
+export type Booking = typeof bookings.$inferSelect;
+
+export type InsertReview = z.infer<typeof insertReviewSchema>;
+export type Review = typeof reviews.$inferSelect;
+
+export type InsertMessage = z.infer<typeof insertMessageSchema>;
+export type Message = typeof messages.$inferSelect;
 
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type Notification = typeof notifications.$inferSelect;

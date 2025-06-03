@@ -1,7 +1,7 @@
 import { db } from './db';
 import { eq, and, or, desc, lte } from 'drizzle-orm';
 import { 
-  User, InsertUser, UpsertUser,
+  Profile, InsertProfile, UpsertProfile,
   Club, InsertClub, 
   UserClub, InsertUserClub,
   TeeTimeListing, InsertTeeTimeListing,
@@ -9,7 +9,7 @@ import {
   Review, InsertReview,
   Message, InsertMessage,
   Notification, InsertNotification,
-  users, clubs, userClubs, teeTimeListing, bookings, reviews, messages, notifications
+  profiles, clubs, userClubs, teeTimeListing, bookings, reviews, messages, notifications
 } from '@shared/schema';
 import { IStorage } from './storage';
 import { pool } from './db';
@@ -28,42 +28,44 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async getUser(id: number): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
+  async getUser(id: string): Promise<Profile | undefined> {
+    const [user] = await db.select().from(profiles).where(eq(profiles.id, id));
     return user;
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.username, username));
+  async getUserByUsername(username: string): Promise<Profile | undefined> {
+    const [user] = await db.select().from(profiles).where(eq(profiles.username, username));
     return user;
   }
 
-  async getUserByEmail(email: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.email, email));
-    return user;
+  // Email lookup - not available in profiles table (handled by Supabase Auth)
+  async getUserByEmail(email: string): Promise<Profile | undefined> {
+    // Email is handled by Supabase Auth, not stored in profiles
+    // This method should not be used with the new schema
+    throw new Error('Email lookup should be handled by Supabase Auth, not profiles table');
   }
   
-  async getUserByGoogleId(googleId: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.googleId, googleId));
-    return user;
+  // Google ID lookup - not available in profiles table (handled by Supabase Auth)
+  async getUserByGoogleId(googleId: string): Promise<Profile | undefined> {
+    // Google ID is handled by Supabase Auth, not stored in profiles
+    throw new Error('Google ID lookup should be handled by Supabase Auth, not profiles table');
   }
   
-  async getUserByResetToken(resetToken: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.resetToken, resetToken));
-    return user;
+  // Reset token lookup - not available in profiles table (handled by Supabase Auth)
+  async getUserByResetToken(resetToken: string): Promise<Profile | undefined> {
+    // Reset tokens are handled by Supabase Auth, not stored in profiles
+    throw new Error('Reset token lookup should be handled by Supabase Auth, not profiles table');
   }
-  
-  // Removed getUserByReplitId as it's not needed in our current implementation
 
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const [user] = await db.insert(users).values({
+  async createUser(insertUser: InsertProfile): Promise<Profile> {
+    const [user] = await db.insert(profiles).values({
       ...insertUser,
       createdAt: new Date()
     }).returning();
     return user;
   }
 
-  async updateUser(id: number, userData: Partial<User>): Promise<User | undefined> {
+  async updateUser(id: string, userData: Partial<Profile>): Promise<Profile | undefined> {
     // Add updatedAt to force a cache refresh
     const updateData = {
       ...userData,
@@ -73,9 +75,9 @@ export class DatabaseStorage implements IStorage {
     console.log(`Updating user ${id} with data:`, updateData);
     
     try {
-      const [updatedUser] = await db.update(users)
+      const [updatedUser] = await db.update(profiles)
         .set(updateData)
-        .where(eq(users.id, id))
+        .where(eq(profiles.id, id))
         .returning();
       
       console.log(`Updated user ${id} successfully:`, updatedUser);
@@ -86,7 +88,7 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  async updateUserStripeInfo(id: number, stripeInfo: { customerId: string, connectId?: string }): Promise<User | undefined> {
+  async updateUserStripeInfo(id: string, stripeInfo: { customerId: string, connectId?: string }): Promise<Profile | undefined> {
     const updateData: any = { 
       stripeCustomerId: stripeInfo.customerId,
       updatedAt: new Date()
@@ -99,9 +101,9 @@ export class DatabaseStorage implements IStorage {
     console.log(`Updating Stripe info for user ${id}:`, updateData);
     
     try {
-      const [updatedUser] = await db.update(users)
+      const [updatedUser] = await db.update(profiles)
         .set(updateData)
-        .where(eq(users.id, id))
+        .where(eq(profiles.id, id))
         .returning();
       
       console.log(`Updated Stripe info for user ${id} successfully:`, updatedUser);
@@ -112,19 +114,18 @@ export class DatabaseStorage implements IStorage {
     }
   }
   
-  async upsertUser(upsertUser: UpsertUser): Promise<User> {
-    // Convert numeric IDs to strings for consistency in Replit Auth
-    const userId = typeof upsertUser.id === 'number' ? upsertUser.id.toString() : upsertUser.id;
+  async upsertUser(upsertUser: UpsertProfile & { id: string }): Promise<Profile> {
+    const userId = upsertUser.id;
     
     try {
       // Try to update the existing user
       const [updatedUser] = await db
-        .update(users)
+        .update(profiles)
         .set({
           ...upsertUser,
           updatedAt: new Date(),
         })
-        .where(eq(users.id, userId))
+        .where(eq(profiles.id, userId))
         .returning();
         
       if (updatedUser) {
@@ -137,14 +138,14 @@ export class DatabaseStorage implements IStorage {
     
     // If update didn't return a user, insert a new one
     const [newUser] = await db
-      .insert(users)
+      .insert(profiles)
       .values({
         ...upsertUser,
         createdAt: new Date(),
         updatedAt: new Date(),
       })
       .onConflictDoUpdate({
-        target: users.id,
+        target: profiles.id,
         set: {
           ...upsertUser,
           updatedAt: new Date(),
@@ -172,7 +173,7 @@ export class DatabaseStorage implements IStorage {
     return club;
   }
 
-  async getUserClubs(userId: number): Promise<UserClub[]> {
+  async getUserClubs(userId: string): Promise<UserClub[]> {
     return await db.select().from(userClubs).where(eq(userClubs.userId, userId));
   }
 
@@ -186,7 +187,7 @@ export class DatabaseStorage implements IStorage {
     return teeTime;
   }
 
-  async getTeeTimeListingsByHostId(hostId: number): Promise<TeeTimeListing[]> {
+  async getTeeTimeListingsByHostId(hostId: string): Promise<TeeTimeListing[]> {
     return await db.select().from(teeTimeListing).where(eq(teeTimeListing.hostId, hostId));
   }
 
@@ -223,7 +224,7 @@ export class DatabaseStorage implements IStorage {
     return booking;
   }
 
-  async getBookingsByGuestId(guestId: number): Promise<Booking[]> {
+  async getBookingsByGuestId(guestId: string): Promise<Booking[]> {
     return await db.select().from(bookings).where(eq(bookings.guestId, guestId));
   }
 
@@ -265,7 +266,7 @@ export class DatabaseStorage implements IStorage {
     return review;
   }
 
-  async getReviewsByTargetId(targetId: number, targetType: string): Promise<Review[]> {
+  async getReviewsByTargetId(targetId: string, targetType: string): Promise<Review[]> {
     return await db.select().from(reviews)
       .where(and(
         eq(reviews.targetId, targetId),
@@ -273,7 +274,7 @@ export class DatabaseStorage implements IStorage {
       ));
   }
 
-  async getReviewsByReviewerId(reviewerId: number): Promise<Review[]> {
+  async getReviewsByReviewerId(reviewerId: string): Promise<Review[]> {
     return await db.select().from(reviews).where(eq(reviews.reviewerId, reviewerId));
   }
 
@@ -294,7 +295,7 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(messages).where(eq(messages.bookingId, bookingId));
   }
 
-  async getConversation(userOneId: number, userTwoId: number): Promise<Message[]> {
+  async getConversation(userOneId: string, userTwoId: string): Promise<Message[]> {
     return await db.select().from(messages)
       .where(
         or(
@@ -311,7 +312,7 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(messages.createdAt));
   }
   
-  async getUserMessages(userId: number): Promise<Message[]> {
+  async getUserMessages(userId: string): Promise<Message[]> {
     return await db.select().from(messages)
       .where(
         or(
@@ -345,13 +346,13 @@ export class DatabaseStorage implements IStorage {
     return notification;
   }
 
-  async getNotificationsByUserId(userId: number): Promise<Notification[]> {
+  async getNotificationsByUserId(userId: string): Promise<Notification[]> {
     return await db.select().from(notifications)
       .where(eq(notifications.userId, userId))
       .orderBy(desc(notifications.createdAt));
   }
 
-  async getUnreadNotificationsByUserId(userId: number): Promise<Notification[]> {
+  async getUnreadNotificationsByUserId(userId: string): Promise<Notification[]> {
     return await db.select().from(notifications)
       .where(and(
         eq(notifications.userId, userId),
@@ -376,7 +377,7 @@ export class DatabaseStorage implements IStorage {
     return updatedNotification;
   }
 
-  async markAllNotificationsAsRead(userId: number): Promise<void> {
+  async markAllNotificationsAsRead(userId: string): Promise<void> {
     await db.update(notifications)
       .set({ isRead: true })
       .where(and(
