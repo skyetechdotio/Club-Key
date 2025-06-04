@@ -1,9 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useParams, Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
-import { queryClient } from "@/lib/queryClient";
-import { useHostTeeTimeListings } from "@/hooks/use-tee-times";
+import { queryClient, supabaseQueries } from "@/lib/queryClient";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -11,94 +10,124 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import TeeTimeCard from "@/components/listings/tee-time-card";
-import { Calendar, Edit, MessageSquare, Star, MapPin, RefreshCw } from "lucide-react";
+import { Calendar, Edit, MessageSquare, Star, MapPin } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatDate } from "@/lib/utils";
 import { Helmet } from 'react-helmet';
 
+// Interface for raw Supabase profile data (snake_case)
+interface SupabaseProfile {
+  id: string;
+  username: string;
+  first_name?: string;
+  last_name?: string;
+  bio?: string;
+  profile_image_url?: string;
+  is_host: boolean;
+  onboarding_completed?: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// Interface for user clubs data from Supabase
+interface UserClub {
+  id: string;
+  user_id: string;
+  club_id: string;
+  member_since: string;
+  clubs: {
+    id: string;
+    name: string;
+    location: string;
+  };
+}
+
+// Interface for tee time listings from Supabase
+interface TeeTimeListing {
+  id: string;
+  host_id: string;
+  club_id: string;
+  date: string;
+  price: number;
+  players_allowed: number;
+  notes?: string;
+  status: string;
+  created_at: string;
+  clubs?: {
+    id: string;
+    name: string;
+    location: string;
+    image_url?: string;
+  };
+  bookings?: any[];
+}
+
+// Interface for reviews from Supabase
+interface Review {
+  id: string;
+  reviewer_id: string;
+  target_id: string;
+  target_type: 'host' | 'guest' | 'club';
+  rating: number;
+  comment?: string;
+  created_at: string;
+  reviewer?: {
+    id: string;
+    username: string;
+    first_name?: string;
+    last_name?: string;
+    profile_image_url?: string;
+  };
+}
+
 export default function ProfilePage() {
   const { id } = useParams<{ id: string }>();
-  const userId = parseInt(id);
+  const userId = id; // Keep as string since Supabase uses UUIDs
   const { user, isAuthenticated, openAuthModal } = useAuth();
   const { toast } = useToast();
   const isOwnProfile = isAuthenticated && user?.id === userId;
-  const [activeTab, setActiveTab] = useState("about");
-  const [location] = useLocation();
+  const [activeTab, setActiveTab] = useState("reviews");
   
-  // Force refetch on navigation mount - this ensures fresh data when coming back from edit page
-  useEffect(() => {
-    // Force profile data to be considered stale when component mounts
-    // Similar to how GitHub, LinkedIn, Twitter handle profile reloads
-    queryClient.invalidateQueries({ queryKey: [`/api/users/${userId}`] });
-  }, [userId, location]);
-  
-  // Manual refresh button handler
-  const handleManualRefresh = () => {
-    queryClient.invalidateQueries({ queryKey: [`/api/users/${userId}`] });
-    toast({
-      title: "Profile refreshed",
-      description: "The latest profile data has been loaded.",
-    });
-  };
-
-  // Fetch user profile data with cache-busting timestamp
-  const { data: profileUser, isLoading, error } = useQuery({
-    queryKey: [`/api/users/${userId}`],
-    queryFn: async ({ queryKey }) => {
-      // Add cache-busting timestamp to prevent browser caching
-      const timestamp = Date.now();
-      const response = await fetch(`${queryKey[0]}?_t=${timestamp}`);
-      
-      if (!response.ok) {
-        throw new Error("Failed to fetch user profile");
-      }
-      const data = await response.json();
-      return data;
-    },
-    enabled: !isNaN(userId), // Only run query if we have a valid userId
+  // Fetch user profile data using Supabase
+  const { data: profileUser, isLoading, error } = useQuery<SupabaseProfile>({
+    queryKey: supabaseQueries.profile.byId(userId),
+    enabled: !!userId,
     retry: 2,
-    // Set shorter staleTime and refetchOnWindowFocus to ensure fresh data
-    staleTime: 10 * 1000, // 10 seconds - like GitHub, LinkedIn, etc.
+    staleTime: 30 * 1000, // 30 seconds
     refetchOnWindowFocus: true,
-  });
-  
-  // Log debug information
-  console.log("Profile page debug:", { 
-    userId, 
-    profileUser, 
-    isLoading, 
-    error: error ? (error as Error).message : null 
   });
 
   // Fetch user clubs if the user is a host
-  const { data: userClubs = [] } = useQuery({
-    queryKey: [`/api/users/${userId}/clubs`],
-    queryFn: async () => {
-      const response = await fetch(`/api/users/${userId}/clubs`);
-      if (!response.ok) {
-        throw new Error("Failed to fetch user clubs");
+  const { data: userClubs = [] } = useQuery<UserClub[]>({
+    queryKey: [
+      'supabase:user_clubs:select',
+      {
+        columns: `
+          id,
+          member_since,
+          clubs (
+            id,
+            name,
+            location
+          )
+        `,
+        eq: { user_id: userId },
+        order: { column: 'member_since', ascending: false }
       }
-      return response.json();
-    },
-    enabled: !!profileUser?.isHost,
+    ],
+    enabled: !!profileUser?.is_host && !!userId,
   });
 
   // Fetch user's tee time listings if they are a host
-  const { data: teeTimeListings = [] } = useHostTeeTimeListings(
-    profileUser?.isHost ? userId : undefined
-  );
+  const { data: teeTimeListings = [] } = useQuery<TeeTimeListing[]>({
+    queryKey: supabaseQueries.teeTimeListings.byHostId(userId),
+    enabled: !!profileUser?.is_host && !!userId,
+  });
 
   // Fetch reviews about the user
-  const { data: reviews = [] } = useQuery({
-    queryKey: [`/api/reviews/target/${userId}/${profileUser?.isHost ? 'host' : 'guest'}`],
-    queryFn: async () => {
-      const response = await fetch(`/api/reviews/target/${userId}/${profileUser?.isHost ? 'host' : 'guest'}`);
-      if (!response.ok) {
-        throw new Error("Failed to fetch reviews");
-      }
-      return response.json();
-    },
-    enabled: !!profileUser,
+  const { data: reviews = [] } = useQuery<Review[]>({
+    queryKey: supabaseQueries.reviews.byTargetId(userId, profileUser?.is_host ? 'host' : 'guest'),
+    enabled: !!profileUser && !!userId,
   });
 
   if (isLoading) {
@@ -112,7 +141,7 @@ export default function ProfilePage() {
     );
   }
 
-  if (!profileUser) {
+  if (error || !profileUser) {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="flex flex-col items-center justify-center min-h-[60vh]">
@@ -123,13 +152,13 @@ export default function ProfilePage() {
     );
   }
 
-  const fullName = profileUser.firstName && profileUser.lastName 
-    ? `${profileUser.firstName} ${profileUser.lastName}` 
+  const fullName = profileUser.first_name && profileUser.last_name 
+    ? `${profileUser.first_name} ${profileUser.last_name}` 
     : profileUser.username;
   
   const getInitials = () => {
-    if (profileUser.firstName && profileUser.lastName) {
-      return `${profileUser.firstName[0]}${profileUser.lastName[0]}`;
+    if (profileUser.first_name && profileUser.last_name) {
+      return `${profileUser.first_name[0]}${profileUser.last_name[0]}`;
     }
     return profileUser.username.substring(0, 2).toUpperCase();
   };
@@ -147,8 +176,8 @@ export default function ProfilePage() {
   return (
     <>
       <Helmet>
-        <title>{fullName} | Linx Profile</title>
-        <meta name="description" content={`View ${fullName}'s profile on Linx. ${profileUser.isHost ? 'Book tee times with this host' : 'Connect with this golfer'}. Check reviews and availability.`} />
+        <title>{fullName} | ClubKey Profile</title>
+        <meta name="description" content={`View ${fullName}'s profile on ClubKey. ${profileUser.is_host ? 'Book tee times with this host' : 'Connect with this golfer'}. Check reviews and availability.`} />
       </Helmet>
       
       <div className="container mx-auto px-4 py-8">
@@ -159,7 +188,7 @@ export default function ProfilePage() {
               <CardContent className="pt-6">
                 <div className="flex flex-col items-center">
                   <Avatar className="h-24 w-24 mb-4">
-                    <AvatarImage src={profileUser.profileImage} alt={fullName} />
+                    <AvatarImage src={profileUser.profile_image_url} alt={fullName} />
                     <AvatarFallback className="bg-primary text-white text-xl">
                       {getInitials()}
                     </AvatarFallback>
@@ -168,7 +197,7 @@ export default function ProfilePage() {
                   <h1 className="text-2xl font-bold text-center">{fullName}</h1>
                   
                   <div className="flex items-center mt-1 mb-2">
-                    {profileUser.isHost && (
+                    {profileUser.is_host && (
                       <Badge className="mr-2 bg-green-100 text-primary hover:bg-green-200">
                         Host
                       </Badge>
@@ -184,7 +213,7 @@ export default function ProfilePage() {
                   </div>
                   
                   <p className="text-neutral-medium text-center mb-4">
-                    Member since {formatDate(new Date(profileUser.createdAt), { month: 'long', year: 'numeric' })}
+                    Member since {formatDate(new Date(profileUser.created_at), { month: 'long', year: 'numeric' })}
                   </p>
                   
                   {!isOwnProfile && isAuthenticated ? (
@@ -217,7 +246,7 @@ export default function ProfilePage() {
                   </div>
                 )}
 
-                {profileUser.isHost && userClubs.length > 0 && (
+                {profileUser.is_host && userClubs.length > 0 && (
                   <div>
                     <h2 className="font-semibold mb-2">Member of</h2>
                     <ul className="space-y-2">
@@ -227,9 +256,9 @@ export default function ProfilePage() {
                             <MapPin className="h-4 w-4" />
                           </div>
                           <div>
-                            <p className="font-medium">{userClub.club.name}</p>
+                            <p className="font-medium">{userClub.clubs.name}</p>
                             <p className="text-xs text-neutral-medium">
-                              Member since {formatDate(userClub.memberSince, { month: 'long', year: 'numeric' })}
+                              Member since {formatDate(userClub.member_since, { month: 'long', year: 'numeric' })}
                             </p>
                           </div>
                         </li>
@@ -248,25 +277,14 @@ export default function ProfilePage() {
                 <Tabs value={activeTab} onValueChange={setActiveTab}>
                   <div className="flex items-center justify-between mb-4">
                     <TabsList>
-                      <TabsTrigger value="about">Reviews</TabsTrigger>
-                      {profileUser.isHost && (
+                      <TabsTrigger value="reviews">Reviews</TabsTrigger>
+                      {profileUser.is_host && (
                         <TabsTrigger value="listings">Tee Time Listings</TabsTrigger>
                       )}
                     </TabsList>
-                    
-                    {isOwnProfile && (
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={handleManualRefresh}
-                        className="flex items-center gap-1 text-xs ml-4"
-                      >
-                        <RefreshCw className="h-3 w-3" /> Refresh
-                      </Button>
-                    )}
                   </div>
                   
-                  <TabsContent value="about">
+                  <TabsContent value="reviews">
                     <h2 className="text-xl font-bold mb-6">Reviews</h2>
                     {reviews.length > 0 ? (
                       <div className="space-y-4">
@@ -275,20 +293,20 @@ export default function ProfilePage() {
                             <CardContent className="pt-6">
                               <div className="flex items-start">
                                 <Avatar className="h-10 w-10 mr-3">
-                                  <AvatarImage src={review.reviewer?.profileImage} alt={review.reviewer?.username} />
+                                  <AvatarImage src={review.reviewer?.profile_image_url} alt={review.reviewer?.username} />
                                   <AvatarFallback className="bg-primary text-white">
-                                    {review.reviewer?.firstName?.[0]}
-                                    {review.reviewer?.lastName?.[0]}
+                                    {review.reviewer?.first_name?.[0]}
+                                    {review.reviewer?.last_name?.[0]}
                                   </AvatarFallback>
                                 </Avatar>
                                 <div className="flex-1">
                                   <div className="flex items-center justify-between">
                                     <div>
                                       <p className="font-medium">
-                                        {review.reviewer?.firstName} {review.reviewer?.lastName}
+                                        {review.reviewer?.first_name} {review.reviewer?.last_name}
                                       </p>
                                       <p className="text-xs text-neutral-medium">
-                                        {formatDate(review.createdAt)}
+                                        {formatDate(review.created_at)}
                                       </p>
                                     </div>
                                     <div className="flex text-yellow-400">
@@ -314,34 +332,42 @@ export default function ProfilePage() {
                         <p className="text-neutral-medium">
                           {isOwnProfile
                             ? "You haven't received any reviews yet."
-                            : `${profileUser.firstName || profileUser.username} hasn't received any reviews yet.`}
+                            : `${profileUser.first_name || profileUser.username} hasn't received any reviews yet.`}
                         </p>
                       </div>
                     )}
                   </TabsContent>
 
-                  {profileUser.isHost && (
+                  {profileUser.is_host && (
                     <TabsContent value="listings">
                       <h2 className="text-xl font-bold mb-6">Tee Time Listings</h2>
                       {teeTimeListings.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          {teeTimeListings.map((teeTime) => (
-                            <TeeTimeCard
-                              key={teeTime.id}
-                              id={teeTime.id}
-                              clubName={teeTime.club?.name || "Unknown Club"}
-                              clubLocation={teeTime.club?.location || "Unknown Location"}
-                              clubImageUrl={teeTime.club?.imageUrl || ""}
-                              hostName={fullName}
-                              hostImageUrl={profileUser.profileImage}
-                              hostInitials={getInitials()}
-                              hostMemberSince="Member for 5+ years"
-                              date={teeTime.date}
-                              price={teeTime.price}
-                              rating={averageRating !== "N/A" ? parseFloat(averageRating) : 0}
-                              reviewCount={reviews.length || 0}
-                            />
-                          ))}
+                          {teeTimeListings.map((teeTime) => {
+                            // Convert string UUID to number for legacy TeeTimeCard component
+                            const numericId = parseInt(teeTime.id, 10) || 0;
+                            const clubName = teeTime.clubs?.name || "Unknown Club";
+                            const clubLocation = teeTime.clubs?.location || "Unknown Location";
+                            const clubImageUrl = teeTime.clubs?.image_url || "";
+                            const hostImageUrl = profileUser.profile_image_url || "";
+                            
+                            return (
+                              <TeeTimeCard
+                                key={teeTime.id}
+                                id={numericId}
+                                clubName={clubName}
+                                clubLocation={clubLocation}
+                                clubImageUrl={clubImageUrl}
+                                hostName={fullName}
+                                hostImageUrl={hostImageUrl}
+                                hostInitials={getInitials()}
+                                date={teeTime.date}
+                                price={teeTime.price}
+                                rating={averageRating !== "N/A" ? parseFloat(averageRating) : 0}
+                                reviewCount={reviews.length || 0}
+                              />
+                            );
+                          })}
                         </div>
                       ) : (
                         <div className="text-center py-8">
@@ -350,7 +376,7 @@ export default function ProfilePage() {
                           <p className="text-neutral-medium">
                             {isOwnProfile
                               ? "You haven't listed any tee times yet."
-                              : `${profileUser.firstName || profileUser.username} doesn't have any tee times available.`}
+                              : `${profileUser.first_name || profileUser.username} doesn't have any tee times available.`}
                           </p>
                           {isOwnProfile && (
                             <Button className="mt-4" asChild>

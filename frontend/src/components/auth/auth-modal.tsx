@@ -41,6 +41,7 @@ export default function AuthModal({ isOpen, onClose, view, setView }: AuthModalP
           />
         ) : (
           <PasswordResetForm 
+            onSuccess={onClose}
             switchToLogin={() => setView("login")} 
           />
         )}

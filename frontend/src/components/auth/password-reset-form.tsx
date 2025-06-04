@@ -5,90 +5,87 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
+import { Loader2 } from "lucide-react";
 
-// Step 1: Request password reset
+// Simplified schema for email-only password reset request
 const passwordResetRequestSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
 });
 
-// Step 2: Confirm with token and new password
-const passwordResetConfirmSchema = z.object({
-  token: z.string().min(1, "Reset token is required"),
-  newPassword: z.string().min(8, "Password must be at least 8 characters"),
-  confirmPassword: z.string().min(8, "Please confirm your password"),
-}).refine((data) => data.newPassword === data.confirmPassword, {
-  message: "Passwords do not match",
-  path: ["confirmPassword"],
-});
-
 type PasswordResetRequestValues = z.infer<typeof passwordResetRequestSchema>;
-type PasswordResetConfirmValues = z.infer<typeof passwordResetConfirmSchema>;
 
 interface PasswordResetFormProps {
   switchToLogin: () => void;
   onSuccess?: () => void;
 }
 
-export default function PasswordResetForm({ switchToLogin }: PasswordResetFormProps) {
-  const [step, setStep] = useState<'request' | 'confirm'>('request');
+export default function PasswordResetForm({ switchToLogin, onSuccess }: PasswordResetFormProps) {
+  const { requestPasswordReset, isLoading: authLoading } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
   const { toast } = useToast();
 
-  // Step 1: Request password reset
-  const requestForm = useForm<PasswordResetRequestValues>({
+  // Use either the auth context loading state or local submitting state
+  const isLoading = authLoading || isSubmitting;
+
+  const form = useForm<PasswordResetRequestValues>({
     resolver: zodResolver(passwordResetRequestSchema),
     defaultValues: {
       email: "",
     },
   });
 
-  // Step 2: Confirm with token and new password
-  const confirmForm = useForm<PasswordResetConfirmValues>({
-    resolver: zodResolver(passwordResetConfirmSchema),
-    defaultValues: {
-      token: "",
-      newPassword: "",
-      confirmPassword: "",
-    },
-  });
-
-  async function onRequestSubmit(data: PasswordResetRequestValues) {
+  async function onSubmit(data: PasswordResetRequestValues) {
     setIsSubmitting(true);
     try {
-      const response = await apiRequest("POST", "/api/auth/reset-password", data);
-      const result = await response.json();
+      console.log("Password reset request submitting for:", data.email);
+      
+      // Call the auth context password reset function
+      await requestPasswordReset(data.email);
+      
+      console.log("Password reset request successful");
+      
+      // Mark email as sent for UI feedback
+      setEmailSent(true);
+      
+      // Show success toast (auth context may also show one, but this is more specific)
       toast({
-        title: "Reset request sent",
-        description: "If an account exists with that email, you'll receive further instructions.",
+        title: "Reset Link Sent",
+        description: "If an account exists for this email, a password reset link has been sent.",
       });
-      setStep('confirm');
-    } catch (error) {
-      toast({
-        title: "Request failed",
-        description: "Could not process your reset request. Please try again.",
-        variant: "destructive",
+      
+      // Optionally call success callback if provided
+      if (onSuccess) {
+        onSuccess();
+      }
+    } catch (error: any) {
+      console.error("Password reset request error:", error);
+      
+      // Handle specific errors
+      let errorMessage = "Failed to send reset email. Please try again.";
+      
+      if (error.message?.includes("Email not found")) {
+        errorMessage = "If an account exists for this email, a password reset link has been sent.";
+      } else if (error.message?.includes("Email rate limit exceeded")) {
+        errorMessage = "Too many reset requests. Please wait a moment and try again.";
+      } else if (error.message?.includes("Invalid email")) {
+        errorMessage = "Please enter a valid email address.";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      // Set form-level error for immediate user feedback
+      form.setError("root", {
+        type: "manual",
+        message: errorMessage,
       });
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  async function onConfirmSubmit(data: PasswordResetConfirmValues) {
-    setIsSubmitting(true);
-    try {
-      const response = await apiRequest("POST", "/api/auth/reset-password/confirm", data);
-      const result = await response.json();
+      
+      // Also show toast for consistency
       toast({
-        title: "Password reset successful",
-        description: "Your password has been updated. You can now log in with your new password.",
-      });
-      switchToLogin();
-    } catch (error) {
-      toast({
-        title: "Reset failed",
-        description: "Could not reset your password. Token may be invalid or expired.",
+        title: "Reset Request Failed",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -97,90 +94,95 @@ export default function PasswordResetForm({ switchToLogin }: PasswordResetFormPr
   }
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-2 text-center">
-        <h1 className="text-3xl font-bold">Reset Password</h1>
-        <p className="text-gray-500 dark:text-gray-400">
-          {step === 'request' 
-            ? "Enter your email to reset your password" 
-            : "Enter the reset token and your new password"}
+    <div className="px-1">
+      <div className="mb-4 text-center">
+        <h3 className="text-xl font-semibold text-gray-900">Reset Password</h3>
+        <p className="text-sm text-gray-500 mt-1">
+          {emailSent 
+            ? "Check your email for reset instructions" 
+            : "Enter your email to reset your password"}
         </p>
       </div>
 
-      {step === 'request' ? (
-        <Form {...requestForm}>
-          <form onSubmit={requestForm.handleSubmit(onRequestSubmit)} className="space-y-4">
+      {!emailSent ? (
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            {/* Display form-level errors */}
+            {form.formState.errors.root && (
+              <div className="rounded-md bg-red-50 p-4">
+                <div className="text-sm text-red-700">
+                  {form.formState.errors.root.message}
+                </div>
+              </div>
+            )}
+
             <FormField
-              control={requestForm.control}
+              control={form.control}
               name="email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Email</FormLabel>
+                  <FormLabel>Email address</FormLabel>
                   <FormControl>
-                    <Input placeholder="john.doe@example.com" {...field} />
+                    <Input 
+                      type="email"
+                      placeholder="email@example.com" 
+                      {...field} 
+                      disabled={isLoading}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
-            <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting ? "Sending..." : "Send Reset Link"}
+
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {isSubmitting ? "Sending reset link..." : "Loading..."}
+                </>
+              ) : (
+                "Send Reset Link"
+              )}
             </Button>
           </form>
         </Form>
       ) : (
-        <Form {...confirmForm}>
-          <form onSubmit={confirmForm.handleSubmit(onConfirmSubmit)} className="space-y-4">
-            <FormField
-              control={confirmForm.control}
-              name="token"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Reset Token</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Enter the token from email" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={confirmForm.control}
-              name="newPassword"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>New Password</FormLabel>
-                  <FormControl>
-                    <Input type="password" placeholder="••••••••" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={confirmForm.control}
-              name="confirmPassword"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Confirm Password</FormLabel>
-                  <FormControl>
-                    <Input type="password" placeholder="••••••••" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting ? "Resetting..." : "Reset Password"}
-            </Button>
-          </form>
-        </Form>
+        <div className="space-y-4">
+          <div className="rounded-md bg-green-50 p-4">
+            <div className="text-sm text-green-700">
+              <p className="font-medium">Reset link sent!</p>
+              <p className="mt-1">
+                If an account exists for this email, you'll receive a password reset link shortly. 
+                Click the link in the email to reset your password.
+              </p>
+            </div>
+          </div>
+          
+          <Button 
+            variant="outline" 
+            className="w-full" 
+            onClick={() => setEmailSent(false)}
+            disabled={isLoading}
+          >
+            Send Another Reset Link
+          </Button>
+        </div>
       )}
 
-      <div className="text-center">
-        <Button variant="link" onClick={switchToLogin}>
-          Back to Login
-        </Button>
+      <div className="mt-6 text-center">
+        <p className="text-sm text-gray-600">
+          Remember your password?{" "}
+          <Button
+            variant="link"
+            className="p-0 text-primary font-medium h-auto"
+            onClick={switchToLogin}
+            type="button"
+            disabled={isLoading}
+          >
+            Back to Login
+          </Button>
+        </p>
       </div>
     </div>
   );

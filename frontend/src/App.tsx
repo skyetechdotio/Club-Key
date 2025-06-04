@@ -5,7 +5,8 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/context/auth-context";
-import { AuthProvider, useAuth } from "@/context/auth-context";
+import { AuthProvider } from "@/context/auth-context";
+import { useAuth } from "@/hooks/use-auth";
 import { ChatProvider } from "@/context/chat-context";
 import ScrollRestoration from "@/components/scroll-restoration";
 import Navbar from "@/layouts/Navbar";
@@ -31,6 +32,7 @@ import TermsOfServicePage from "@/pages/terms-of-service";
 import CookiePolicyPage from "@/pages/cookie-policy";
 import ContactPage from "@/pages/contact";
 import HelpPage from "@/pages/help";
+import UpdatePasswordPage from "@/pages/UpdatePasswordPage";
 import AuthModal from "@/components/auth/auth-modal";
 import SanityCheckComponent from "@/components/_dev_examples/SanityCheckComponent";
 import { Loader2 } from "lucide-react";
@@ -46,7 +48,7 @@ function ProtectedRoute({ component: Component, ...rest }: { component: React.Co
     matches,
     isLoading,
     user,
-    needsOnboarding: user && !user.firstName && !user.lastName && matches && rest.path !== "/onboarding"
+    onboardingCompleted: user?.onboardingCompleted
   });
 
   if (isLoading) {
@@ -91,14 +93,40 @@ function HostOnlyRoute({ component: Component, ...rest }: { component: React.Com
   return <Component />;
 }
 
-function Router() {
-  const [location] = useLocation();
+function Router({ openAuthModal }: { openAuthModal: (view: "login" | "register" | "reset-password") => void }) {
+  const [location, navigate] = useLocation();
   const isHomePage = location === "/";
   const { user, isLoading, refreshUserData } = useAuth();
 
   // Determine if navbar and footer should be shown
-  const hideNavbar = location === "/onboarding";
+  const hideNavbar = location === "/onboarding" || location === "/update-password";
   const hideFooter = hideNavbar || isHomePage;
+  
+  // Handle onboarding redirection and query parameter auth modal
+  useEffect(() => {
+    // Parse query parameters
+    const searchParams = new URLSearchParams(window.location.search);
+    const authParam = searchParams.get('auth');
+    
+    // Handle auth query parameter (e.g., ?auth=reset-password)
+    if (authParam && (authParam === 'login' || authParam === 'register' || authParam === 'reset-password')) {
+      console.log("Opening auth modal from query parameter:", authParam);
+      openAuthModal(authParam as "login" | "register" | "reset-password");
+      
+      // Clean up URL by removing query parameter
+      const cleanPath = location.split('?')[0];
+      navigate(cleanPath, { replace: true });
+      
+      // Important: Return early here if we opened a modal, so we don't immediately try to redirect for onboarding
+      return;
+    }
+    
+    // Handle onboarding redirection for authenticated users
+    if (user && !user.onboardingCompleted && location !== "/onboarding" && location !== "/update-password") {
+      console.log("User needs onboarding, redirecting to /onboarding");
+      navigate("/onboarding", { replace: true });
+    }
+  }, [user, location, openAuthModal, navigate]);
   
   // Periodically refresh user data to ensure profile updates are reflected everywhere
   useEffect(() => {
@@ -123,6 +151,9 @@ function Router() {
         <Switch>
           <Route path="/" component={Home} />
           
+          {/* Password Reset Page - No auth required, handles its own session validation */}
+          <Route path="/update-password" component={UpdatePasswordPage} />
+          
           {/* Sanity Check Route for Testing TanStack Query + Supabase Integration */}
           <Route path="/sanity-check" component={SanityCheckComponent} />
           
@@ -134,18 +165,19 @@ function Router() {
               return !isNaN(id) ? <ProfilePage /> : <Redirect to="/" />;
             }}
           </Route>
+          
+          {/* Onboarding routes */}
           <Route path="/onboarding" component={ProfileOnboarding} />
           <Route path="/profile-onboarding">
             <ProtectedRoute path="/profile-onboarding" component={ProfileOnboarding} />
           </Route>
+          
+          {/* Protected routes */}
           <Route path="/profile-edit">
             <ProtectedRoute path="/profile-edit" component={BasicProfileEdit} />
           </Route>
           <Route path="/dashboard">
             <ProtectedRoute path="/dashboard" component={Dashboard} />
-          </Route>
-          <Route path="/create-listing">
-            <HostOnlyRoute path="/create-listing" component={CreateListing} />
           </Route>
           <Route path="/pre-checkout/:teeTimeId">
             <ProtectedRoute path="/pre-checkout/:teeTimeId" component={PreCheckoutPage} />
@@ -162,6 +194,12 @@ function Router() {
           <Route path="/notifications">
             <ProtectedRoute path="/notifications" component={NotificationsPage} />
           </Route>
+          
+          {/* Host-only routes */}
+          <Route path="/create-listing">
+            <HostOnlyRoute path="/create-listing" component={CreateListing} />
+          </Route>
+          
           {/* Standard pages */}
           <Route path="/about" component={AboutPage} />
           <Route path="/press" component={PressPage} />
@@ -182,7 +220,7 @@ function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalView, setAuthModalView] = useState<"login" | "register" | "reset-password">("login");
 
-  // Close auth modal function to be passed to context
+  // Open auth modal function to be passed to context and Router
   const openAuthModal = (view: "login" | "register" | "reset-password" = "login") => {
     setAuthModalView(view);
     setIsAuthModalOpen(true);
@@ -200,7 +238,7 @@ function App() {
             <TooltipProvider>
               <ScrollRestoration />
               <Toaster />
-              <Router />
+              <Router openAuthModal={openAuthModal} />
               <AuthModal 
                 isOpen={isAuthModalOpen} 
                 onClose={closeAuthModal} 
