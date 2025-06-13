@@ -1,6 +1,6 @@
 # ClubKey - Golf Tee Time Marketplace
 
-A modern web platform connecting golf enthusiasts with exclusive club tee times, offering an intuitive and data-driven booking experience.
+A modern web platform connecting golf enthusiasts with exclusive club tee times, offering an intuitive and seamless booking experience.
 
 ## Overview
 
