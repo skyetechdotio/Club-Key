@@ -51,7 +51,7 @@ export interface TeeTimeBooking {
 }
 
 export interface CreateTeeTimeData {
-  hostId: number;
+  hostId: string; // UUID for Supabase
   clubId: number;
   date: Date | string;
   price: number;
@@ -168,23 +168,42 @@ export function useHostBookings(hostId?: number) {
   });
 }
 
-// Create a new tee time listing
+// Create a new tee time listing using Supabase
 export function useCreateTeeTime() {
   return useMutation({
     mutationFn: async (data: CreateTeeTimeData) => {
-      // Convert Date objects to ISO strings before sending to the server
-      const processedData = {
-        ...data,
+      // Import supabase client
+      const { supabase } = await import('@/lib/supabaseClient');
+      
+      // Prepare data for Supabase insertion
+      const insertData = {
+        host_id: data.hostId,
+        club_id: data.clubId,
         date: typeof data.date === 'object' && data.date instanceof Date ? data.date.toISOString() : data.date,
+        price: data.price,
+        players_allowed: data.playersAllowed,
+        notes: data.notes || null,
+        status: 'available',
       };
       
-      const response = await apiRequest('POST', '/api/tee-times', processedData);
-      return response.json();
+      const { data: result, error } = await supabase
+        .from('tee_time_listings')
+        .insert(insertData)
+        .select()
+        .single();
+      
+      if (error) {
+        throw new Error(error.message);
+      }
+      
+      return result;
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['/api/tee-times'] });
-      // Also invalidate the host's tee times query to update the calendar
-      queryClient.invalidateQueries({ queryKey: ['/api/hosts', data.hostId, 'tee-times'] });
+      // Invalidate relevant queries
+      queryClient.invalidateQueries({ queryKey: ['supabase:tee_time_listings:select'] });
+      queryClient.invalidateQueries({ 
+        queryKey: ['supabase:tee_time_listings:select', { eq: { host_id: data.host_id } }] 
+      });
     },
   });
 }

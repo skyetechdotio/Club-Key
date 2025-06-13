@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { useUserBookings, useHostBookings, useHostTeeTimeListings } from "@/hooks/use-tee-times";
+import { useUserBookings, useHostBookings } from "@/hooks/use-tee-times";
+import { useHostTeeTimeListingsSupabase } from "@/hooks/use-profile";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,9 +14,28 @@ import { useUpdateBookingStatus } from "@/hooks/use-tee-times";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useCreatePaymentIntent } from "@/hooks/use-tee-times";
 import { formatDate, formatTime } from "@/lib/utils";
-import { CalendarDays, CheckCircle, Clock, Edit2, Volleyball, MessageSquare, Star, Users } from "lucide-react";
+import { CalendarDays, CheckCircle, Clock, Edit2, Volleyball, MessageSquare, Star, Users, Loader2, AlertCircle, Building, MapPin } from "lucide-react";
 import { Helmet } from 'react-helmet';
 import HostCalendar from "@/components/dashboard/host-calendar";
+
+// Interface for Supabase tee time listings
+interface TeeTimeListing {
+  id: string;
+  host_id: string;
+  club_id: number;
+  date: string;
+  price: number;
+  players_allowed: number;
+  notes?: string;
+  status: string;
+  created_at: string;
+  clubs?: {
+    id: number;
+    name: string;
+    location: string;
+    image_url?: string;
+  };
+}
 
 export default function DashboardPage() {
   const [, navigate] = useLocation();
@@ -38,9 +58,13 @@ export default function DashboardPage() {
   const { data: hostBookings, isLoading: isLoadingHostBookings } = useHostBookings(
     user?.isHost ? user.id : undefined
   );
-  const { data: hostTeeTimeListings, isLoading: isLoadingTeeTimeListings } = useHostTeeTimeListings(
-    user?.isHost ? user.id : undefined
-  );
+  
+  // Fetch host's tee time listings using Supabase
+  const { 
+    data: hostTeeTimeListings = [], 
+    isLoading: isLoadingTeeTimeListings, 
+    error: teeTimeListingsError 
+  } = useHostTeeTimeListingsSupabase(user?.id, !!user?.isHost);
 
   const handleUpdateBookingStatus = (booking: any, status: string) => {
     updateBookingStatus(
@@ -105,21 +129,42 @@ export default function DashboardPage() {
         return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">Completed</Badge>;
       case 'cancelled':
         return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">Cancelled</Badge>;
+      case 'available':
+        return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">Available</Badge>;
+      case 'booked':
+        return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">Booked</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
   };
 
+  const handleEditListing = (listingId: string) => {
+    toast({
+      title: "Feature Coming Soon",
+      description: "Editing listings will be available soon!"
+    });
+    // TODO: Navigate to edit listing page
+    // navigate(`/edit-listing/${listingId}`);
+  };
+
+  const handleCancelListing = (listingId: string) => {
+    toast({
+      title: "Feature Coming Soon", 
+      description: "Cancelling listings will be available soon!"
+    });
+    // TODO: Implement cancel listing functionality
+  };
+
   return (
     <>
       <Helmet>
-        <title>Dashboard | Linx</title>
+        <title>Dashboard | ClubKey</title>
         <meta name="description" content="Manage your tee time bookings, listings and account information. View your upcoming golf sessions and connect with hosts or guests." />
       </Helmet>
       <div className="container mx-auto px-4 py-8">
         <div className="flex flex-col md:flex-row justify-between items-start mb-8 gap-4">
           <div>
-            <h1 className="text-3xl font-heading font-bold text-neutral-dark">Dashboard</h1>
+            <h1 className="text-3xl font-bold text-neutral-dark">Dashboard</h1>
             <p className="text-neutral-medium">Manage your bookings, listings, and account</p>
           </div>
           {user?.isHost && (
@@ -174,7 +219,6 @@ export default function DashboardPage() {
                     <Button 
                       className="w-full"
                       onClick={() => {
-                        // This would update the user to become a host
                         toast({
                           title: "Feature Coming Soon",
                           description: "Host registration will be available soon!"
@@ -218,7 +262,7 @@ export default function DashboardPage() {
                   <CardContent>
                     {isLoadingBookings ? (
                       <div className="flex justify-center py-8">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
                       </div>
                     ) : myBookings && myBookings.length > 0 ? (
                       <div className="space-y-6">
@@ -325,7 +369,7 @@ export default function DashboardPage() {
                     <CardContent>
                       {isLoadingHostBookings ? (
                         <div className="flex justify-center py-8">
-                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                          <Loader2 className="h-8 w-8 animate-spin text-primary" />
                         </div>
                       ) : hostBookings && hostBookings.length > 0 ? (
                         <div className="space-y-6">
@@ -416,43 +460,52 @@ export default function DashboardPage() {
                 <TabsContent value="listings">
                   <div className="space-y-6">
                     {/* Calendar view */}
-                    <HostCalendar />
+                    <HostCalendar teeTimeListings={hostTeeTimeListings} />
                     
                     {/* Traditional list view */}
                     <Card>
                       <CardHeader>
                         <CardTitle>My Tee Time Listings</CardTitle>
                         <CardDescription>
-                          View all your tee time listings in a list format
+                          View and manage all your tee time listings
                         </CardDescription>
                       </CardHeader>
                       <CardContent>
                         {isLoadingTeeTimeListings ? (
                           <div className="flex justify-center py-8">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                          </div>
+                        ) : teeTimeListingsError ? (
+                          <div className="text-center py-12">
+                            <AlertCircle className="h-12 w-12 mx-auto text-destructive mb-4" />
+                            <h3 className="text-lg font-medium mb-2">Failed to load listings</h3>
+                            <p className="text-neutral-medium mb-6">Unable to fetch your tee time listings</p>
+                            <Button onClick={() => window.location.reload()}>
+                              Try Again
+                            </Button>
                           </div>
                         ) : hostTeeTimeListings && hostTeeTimeListings.length > 0 ? (
                           <div className="space-y-6">
-                            {hostTeeTimeListings.map((teeTime: any) => (
+                            {hostTeeTimeListings.map((teeTime: TeeTimeListing) => (
                               <div key={teeTime.id} className="border rounded-lg p-4">
                                 <div className="flex flex-col md:flex-row justify-between gap-4">
                                   <div className="flex-1">
                                     <div className="flex items-center justify-between mb-2">
-                                      <h3 className="font-bold text-lg">{teeTime.club?.name}</h3>
-                                      <Badge 
-                                        variant="outline"
-                                        className={
-                                          teeTime.status === 'available' 
-                                            ? 'bg-green-50 text-green-700 border-green-200' 
-                                            : 'bg-blue-50 text-blue-700 border-blue-200'
-                                        }
-                                      >
-                                        {teeTime.status === 'available' ? 'Available' : 'Booked'}
-                                      </Badge>
+                                      <h3 className="font-bold text-lg flex items-center">
+                                        <Building className="h-5 w-5 mr-2 text-primary" />
+                                        {teeTime.clubs?.name}
+                                      </h3>
+                                      {getStatusBadge(teeTime.status)}
                                     </div>
-                                    <p className="text-neutral-medium">{teeTime.club?.location}</p>
                                     
-                                    <div className="mt-4 space-y-2">
+                                    {teeTime.clubs?.location && (
+                                      <p className="text-neutral-medium flex items-center mb-3">
+                                        <MapPin className="h-4 w-4 mr-1" />
+                                        {teeTime.clubs.location}
+                                      </p>
+                                    )}
+                                    
+                                    <div className="space-y-2">
                                       <div className="flex items-center">
                                         <CalendarDays className="h-4 w-4 text-primary mr-2" />
                                         <span>{formatDate(teeTime.date)}</span>
@@ -463,47 +516,44 @@ export default function DashboardPage() {
                                       </div>
                                       <div className="flex items-center">
                                         <Users className="h-4 w-4 text-primary mr-2" />
-                                        <span>Up to {teeTime.playersAllowed} players</span>
+                                        <span>Up to {teeTime.players_allowed} players</span>
                                       </div>
                                     </div>
+
+                                    {teeTime.notes && (
+                                      <div className="mt-3 p-3 bg-neutral-50 rounded-lg">
+                                        <p className="text-sm text-neutral-600">{teeTime.notes}</p>
+                                      </div>
+                                    )}
                                   </div>
-  
+
                                   <div className="flex flex-col justify-between">
                                     <div className="text-right">
                                       <p className="text-lg font-bold text-primary">${teeTime.price}</p>
                                       <p className="text-sm text-neutral-medium">per player</p>
+                                      <p className="text-xs text-neutral-medium mt-1">
+                                        Created {formatDate(teeTime.created_at)}
+                                      </p>
                                     </div>
-  
+
                                     <div className="mt-4 space-y-2">
                                       <Button 
                                         variant="outline" 
                                         className="w-full"
-                                        onClick={() => {
-                                          // This would navigate to edit page
-                                        toast({
-                                          title: "Feature Coming Soon",
-                                          description: "Editing listings will be available soon!"
-                                        });
-                                      }}
-                                    >
-                                      <Edit2 className="mr-2 h-4 w-4" /> Edit
-                                    </Button>
-                                    
-                                    {teeTime.status === 'available' && (
-                                      <Button 
-                                        variant="outline" 
-                                        className="w-full text-destructive hover:text-destructive"
-                                        onClick={() => {
-                                          // This would cancel/delete listing
-                                          toast({
-                                            title: "Feature Coming Soon",
-                                            description: "Cancelling listings will be available soon!"
-                                          });
-                                        }}
+                                        onClick={() => handleEditListing(teeTime.id)}
                                       >
-                                        Cancel
+                                        <Edit2 className="mr-2 h-4 w-4" /> Edit
                                       </Button>
-                                    )}
+                                      
+                                      {teeTime.status === 'available' && (
+                                        <Button 
+                                          variant="outline" 
+                                          className="w-full text-destructive hover:text-destructive"
+                                          onClick={() => handleCancelListing(teeTime.id)}
+                                        >
+                                          Cancel
+                                        </Button>
+                                      )}
                                     </div>
                                   </div>
                                 </div>
@@ -515,7 +565,10 @@ export default function DashboardPage() {
                             <Volleyball className="h-12 w-12 mx-auto text-neutral-light mb-4" />
                             <h3 className="text-lg font-medium mb-2">No Listings Yet</h3>
                             <p className="text-neutral-medium mb-6">You haven't created any tee time listings yet</p>
-                            <Button onClick={() => navigate("/create-listing")}>Create a Listing</Button>
+                            <Button onClick={() => navigate("/create-listing")}>
+                              <Volleyball className="mr-2 h-4 w-4" />
+                              Create Your First Listing
+                            </Button>
                           </div>
                         )}
                       </CardContent>

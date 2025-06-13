@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { CalendarIcon, ChevronLeft, ChevronRight, Plus } from "lucide-react";
-import { TeeTimeListing, useHostTeeTimeListings } from "@/hooks/use-tee-times";
+import { TeeTimeListing as SupabaseTeeTimeListing } from "@/hooks/use-profile";
 import { useAuth } from "@/hooks/use-auth";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -15,17 +15,20 @@ type CalendarDay = {
   date: Date;
   isCurrentMonth: boolean;
   teeTimesCount: number;
-  teeTimeIds: number[];
+  teeTimeIds: string[];
   isToday: boolean;
 };
 
-export default function HostCalendar() {
+interface HostCalendarProps {
+  teeTimeListings?: SupabaseTeeTimeListing[];
+}
+
+export default function HostCalendar({ teeTimeListings = [] }: HostCalendarProps) {
   const { user } = useAuth();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [calendarDays, setCalendarDays] = useState<CalendarDay[]>([]);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const { data: hostTeeTimeListings, isLoading } = useHostTeeTimeListings(user?.id);
 
   // Generate calendar days for current month view
   useEffect(() => {
@@ -64,22 +67,22 @@ export default function HostCalendar() {
       // Create calendar days with tee time data
       const today = new Date();
       return allDays.map(date => {
-        const dayTeeTimeListings = hostTeeTimeListings?.filter(
-          (teeTime: TeeTimeListing) => isSameDay(new Date(teeTime.date), date)
+        const dayTeeTimeListings = teeTimeListings?.filter(
+          (teeTime: SupabaseTeeTimeListing) => isSameDay(new Date(teeTime.date), date)
         ) || [];
 
         return {
           date,
           isCurrentMonth: isSameMonth(date, currentMonth),
           teeTimesCount: dayTeeTimeListings.length,
-          teeTimeIds: dayTeeTimeListings.map((teeTime: TeeTimeListing) => teeTime.id),
+          teeTimeIds: dayTeeTimeListings.map((teeTime: SupabaseTeeTimeListing) => teeTime.id),
           isToday: isSameDay(date, today)
         };
       });
     };
 
     setCalendarDays(generateCalendarDays());
-  }, [currentMonth, hostTeeTimeListings]);
+  }, [currentMonth, teeTimeListings]);
 
   // Navigate to previous/next month
   const goToPreviousMonth = () => {
@@ -100,44 +103,21 @@ export default function HostCalendar() {
     setSelectedDay(day.date);
   };
 
-  const formatTeeTime = (teeTime: TeeTimeListing) => {
+  const formatTeeTime = (teeTime: SupabaseTeeTimeListing) => {
     const teeTimeDate = new Date(teeTime.date);
     return format(teeTimeDate, "h:mm a");
   };
 
   // Get tee times for selected day
   const getSelectedDayTeeTimeListings = () => {
-    if (!selectedDay || !hostTeeTimeListings) return [];
+    if (!selectedDay || !teeTimeListings) return [];
     
-    return hostTeeTimeListings.filter(
-      (teeTime: TeeTimeListing) => isSameDay(new Date(teeTime.date), selectedDay)
+    return teeTimeListings.filter(
+      (teeTime: SupabaseTeeTimeListing) => isSameDay(new Date(teeTime.date), selectedDay)
     );
   };
 
   const selectedDayTeeTimeListings = getSelectedDayTeeTimeListings();
-
-  if (isLoading) {
-    return (
-      <Card className="w-full">
-        <CardHeader>
-          <CardTitle className="flex justify-between items-center">
-            <span>Tee Time Calendar</span>
-            <div className="animate-pulse h-8 w-24 bg-gray-200 rounded"></div>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-7 gap-2">
-            {Array.from({ length: 42 }).map((_, i) => (
-              <div 
-                key={i} 
-                className="aspect-square rounded-md bg-gray-100 animate-pulse"
-              ></div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
 
   return (
     <Card className="w-full">
@@ -272,28 +252,28 @@ export default function HostCalendar() {
               </p>
             ) : (
               <div className="space-y-2">
-                {selectedDayTeeTimeListings.map((teeTime: TeeTimeListing) => (
+                {selectedDayTeeTimeListings.map((teeTime: SupabaseTeeTimeListing) => (
                   <Card key={teeTime.id} className="overflow-hidden">
                     <CardContent className="p-3">
                       <div className="flex justify-between items-center">
                         <div>
                           <p className="font-medium text-sm">
-                            {formatTeeTime(teeTime)} at {teeTime.club?.name}
+                            {formatTeeTime(teeTime)} at {teeTime.clubs?.name}
                           </p>
                           <p className="text-xs text-neutral-medium">
-                            ${teeTime.price} per player • {teeTime.playersAllowed} spots available
+                            ${teeTime.price} per player • {teeTime.players_allowed} spots available
                           </p>
                         </div>
                         <div className="flex items-center space-x-2">
                           <Badge 
-                            variant={teeTime.status === "active" ? "outline" : "secondary"}
+                            variant={teeTime.status === "available" ? "outline" : "secondary"}
                             className={
-                              teeTime.status === "active" 
+                              teeTime.status === "available" 
                                 ? "bg-green-100 text-green-800 border-green-200" 
                                 : "bg-neutral-100 text-neutral-800"
                             }
                           >
-                            {teeTime.status === "active" ? "Active" : "Draft"}
+                            {teeTime.status === "available" ? "Available" : teeTime.status}
                           </Badge>
                           <Button variant="ghost" size="icon" className="h-8 w-8">
                             <span className="sr-only">Edit</span>

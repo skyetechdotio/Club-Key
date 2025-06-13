@@ -1,13 +1,14 @@
-import { useState } from "react";
+import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { useCreateTeeTime } from "@/hooks/use-tee-times";
-import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Form,
   FormControl,
@@ -33,64 +34,113 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { CalendarIcon, Clock, Volleyball } from "lucide-react";
+import { CalendarIcon, Loader2, AlertCircle, Building, MapPin } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Helmet } from 'react-helmet';
 
+// Time options for tee times
 const timeOptions = [
   "06:00", "06:30", "07:00", "07:30", "08:00", "08:30", 
   "09:00", "09:30", "10:00", "10:30", "11:00", "11:30",
   "12:00", "12:30", "13:00", "13:30", "14:00", "14:30",
-  "15:00", "15:30", "16:00", "16:30", "17:00", "17:30"
+  "15:00", "15:30", "16:00", "16:30", "17:00", "17:30",
+  "18:00", "18:30"
 ];
 
+// Zod validation schema
 const createListingSchema = z.object({
   clubId: z.string({
     required_error: "Please select a club",
-  }),
+  }).min(1, "Please select a club"),
   date: z.date({
     required_error: "Please select a date",
   }),
   time: z.string({
     required_error: "Please select a time",
-  }),
-  price: z.string().transform((val) => parseFloat(val)),
-  playersAllowed: z.string().default("4"),
+  }).min(1, "Please select a time"),
+  price: z.string()
+    .min(1, "Price is required")
+    .refine((val) => !isNaN(parseFloat(val)) && parseFloat(val) >= 0, {
+      message: "Price must be a valid positive number",
+    })
+    .transform((val) => parseFloat(val)),
+  playersAllowed: z.string()
+    .default("4")
+    .refine((val) => !isNaN(parseInt(val)) && parseInt(val) >= 1 && parseInt(val) <= 4, {
+      message: "Players allowed must be between 1 and 4",
+    })
+    .transform((val) => parseInt(val)),
   notes: z.string().optional(),
 });
 
 type CreateListingFormValues = z.infer<typeof createListingSchema>;
 
+// Interface for user clubs from Supabase
+interface UserClub {
+  id: string;
+  user_id: string;
+  club_id: number;
+  member_since: string;
+  clubs: {
+    id: number;
+    name: string;
+    location: string;
+    description?: string;
+  };
+}
+
 export default function CreateListingPage() {
   const [, navigate] = useLocation();
   const { user, isAuthenticated, openAuthModal } = useAuth();
   const { toast } = useToast();
-  const { mutate: createTeeTime, isPending } = useCreateTeeTime();
+  const { mutate: createTeeTime, isPending: isCreating } = useCreateTeeTime();
 
   // Redirect to login if not authenticated
-  if (!isAuthenticated) {
-    openAuthModal("login");
-    navigate("/");
-    return null;
-  }
+  useEffect(() => {
+    if (!isAuthenticated) {
+      openAuthModal("login");
+      navigate("/");
+    }
+  }, [isAuthenticated, openAuthModal, navigate]);
 
   // Redirect if not a host
-  if (user && !user.isHost) {
-    navigate("/dashboard");
-    return null;
-  }
+  useEffect(() => {
+    if (user && !user.isHost) {
+      toast({
+        title: "Access Denied",
+        description: "Only hosts can create tee time listings.",
+        variant: "destructive",
+      });
+      navigate("/dashboard");
+    }
+  }, [user, navigate, toast]);
 
-  // Fetch user's clubs
-  const { data: userClubs, isLoading: isLoadingClubs } = useQuery({
-    queryKey: [`/api/users/${user?.id}/clubs`],
-    queryFn: async () => {
-      const response = await fetch(`/api/users/${user?.id}/clubs`);
-      if (!response.ok) {
-        throw new Error("Failed to fetch user clubs");
+  // Fetch user's affiliated clubs using Supabase
+  const { 
+    data: userClubs = [], 
+    isLoading: isLoadingClubs, 
+    error: clubsError 
+  } = useQuery<UserClub[]>({
+    queryKey: [
+      'supabase:user_clubs:select',
+      {
+        columns: `
+          id,
+          user_id,
+          club_id,
+          member_since,
+          clubs (
+            id,
+            name,
+            location,
+            description
+          )
+        `,
+        eq: { user_id: user?.id },
+        order: { column: 'member_since', ascending: false }
       }
-      return response.json();
-    },
-    enabled: !!user,
+    ],
+    enabled: !!user?.id && !!user?.isHost,
   });
 
   const form = useForm<CreateListingFormValues>({
@@ -100,54 +150,144 @@ export default function CreateListingPage() {
       date: undefined,
       time: "",
       price: "",
-      playersAllowed: "4",
+      playersAllowed: 4,
       notes: "",
     },
   });
 
   const onSubmit = (data: CreateListingFormValues) => {
-    if (!user) return;
+    if (!user?.id) {
+      toast({
+        title: "Error",
+        description: "User not found. Please try logging in again.",
+        variant: "destructive",
+      });
+      return;
+    }
 
-    // Combine date and time
+    // Combine date and time into a single Date object
     const dateTime = new Date(data.date);
     const [hours, minutes] = data.time.split(":").map(Number);
-    dateTime.setHours(hours, minutes);
+    dateTime.setHours(hours, minutes, 0, 0);
+
+    // Validate that the date/time is in the future
+    if (dateTime <= new Date()) {
+      toast({
+        title: "Invalid Date/Time",
+        description: "Please select a future date and time for your tee time.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     createTeeTime({
       hostId: user.id,
       clubId: parseInt(data.clubId),
-      date: dateTime, // Send the actual Date object, not a string
+      date: dateTime,
       price: data.price,
-      playersAllowed: parseInt(data.playersAllowed),
-      notes: data.notes,
+      playersAllowed: data.playersAllowed,
+      notes: data.notes?.trim() || undefined,
     }, {
       onSuccess: () => {
         toast({
-          title: "Tee time created",
-          description: "Your tee time listing has been created successfully.",
+          title: "Tee time created successfully!",
+          description: "Your tee time listing is now available for booking.",
         });
         navigate("/dashboard");
       },
       onError: (error) => {
+        console.error('Create tee time error:', error);
         toast({
-          title: "Error",
-          description: error.message || "Failed to create tee time listing. Please try again.",
+          title: "Failed to create tee time",
+          description: error.message || "An error occurred while creating your tee time listing. Please try again.",
           variant: "destructive",
         });
       },
     });
   };
 
+  // Don't render anything while checking authentication
+  if (!isAuthenticated || (user && !user.isHost)) {
+    return null;
+  }
+
+  // Loading state for clubs
+  if (isLoadingClubs) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="flex flex-col items-center justify-center min-h-[60vh]">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+          <p className="text-neutral-medium">Loading your clubs...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state for clubs fetch
+  if (clubsError) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="flex flex-col items-center justify-center min-h-[60vh]">
+          <AlertCircle className="h-12 w-12 text-destructive mb-4" />
+          <h1 className="text-2xl font-bold text-neutral-dark mb-2">Failed to load clubs</h1>
+          <p className="text-neutral-medium mb-4">Unable to fetch your club affiliations</p>
+          <Button onClick={() => navigate("/dashboard")}>
+            Back to Dashboard
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // No clubs state
+  if (userClubs.length === 0) {
+    return (
+      <>
+        <Helmet>
+          <title>Create Tee Time Listing | ClubKey</title>
+          <meta name="description" content="Create a new tee time listing at your golf club" />
+        </Helmet>
+        
+        <div className="container mx-auto px-4 py-8">
+          <div className="max-w-2xl mx-auto">
+            <Card>
+              <CardHeader className="text-center">
+                <CardTitle className="flex items-center justify-center space-x-2 text-2xl">
+                  <Building className="h-6 w-6" />
+                  <span>No Club Affiliations</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-center py-8">
+                <p className="text-neutral-medium mb-6">
+                  You need to be affiliated with at least one golf club before you can create tee time listings.
+                </p>
+                <div className="space-y-3">
+                  <Button onClick={() => navigate("/profile-onboarding")}>
+                    Add Club Affiliation
+                  </Button>
+                  <Button variant="outline" onClick={() => navigate("/dashboard")}>
+                    Back to Dashboard
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <Helmet>
-        <title>Create Tee Time Listing | Linx</title>
+        <title>Create Tee Time Listing | ClubKey</title>
         <meta name="description" content="Host a tee time at your golf club. Share access to your club and earn income from your membership." />
       </Helmet>
+      
       <div className="container mx-auto px-4 py-8">
-        <div>
-          <div className="mb-6">
-            <h1 className="text-3xl font-heading font-bold text-neutral-dark mb-2">
+        <div className="max-w-2xl mx-auto">
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-neutral-dark mb-2">
               Create a Tee Time Listing
             </h1>
             <p className="text-neutral-medium">
@@ -155,236 +295,251 @@ export default function CreateListingPage() {
             </p>
           </div>
 
-          {isLoadingClubs ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-            </div>
-          ) : userClubs && userClubs.length > 0 ? (
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                <FormField
-                  control={form.control}
-                  name="clubId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Select Club</FormLabel>
-                      <Select
-                        onValueChange={field.onChange}
-                        defaultValue={field.value}
-                        disabled={isPending}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select a club" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {userClubs.map((userClub) => (
-                            <SelectItem
-                              key={userClub.clubId}
-                              value={userClub.clubId.toString()}
-                            >
-                              {userClub.club.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormDescription>
-                        Select the club where you're hosting this tee time
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Tee Time Details</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                  {/* Club Selection */}
                   <FormField
                     control={form.control}
-                    name="date"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-col">
-                        <FormLabel>Date</FormLabel>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <FormControl>
-                              <Button
-                                variant={"outline"}
-                                className={cn(
-                                  "w-full pl-3 text-left font-normal",
-                                  !field.value && "text-muted-foreground"
-                                )}
-                                disabled={isPending}
-                              >
-                                {field.value ? (
-                                  format(field.value, "PPP")
-                                ) : (
-                                  <span>Pick a date</span>
-                                )}
-                                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                              </Button>
-                            </FormControl>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                            <Calendar
-                              mode="single"
-                              selected={field.value}
-                              onSelect={field.onChange}
-                              disabled={(date) => date < new Date()}
-                              initialFocus
-                            />
-                          </PopoverContent>
-                        </Popover>
-                        <FormDescription>
-                          Select the date for your tee time
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="time"
+                    name="clubId"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Time</FormLabel>
+                        <FormLabel>Select Club *</FormLabel>
                         <Select
                           onValueChange={field.onChange}
-                          defaultValue={field.value}
-                          disabled={isPending}
+                          value={field.value}
+                          disabled={isCreating}
                         >
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder="Select a time" />
+                              <SelectValue placeholder="Choose your club" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {timeOptions.map((time) => (
-                              <SelectItem key={time} value={time}>
-                                {time}
+                            {userClubs.map((userClub) => (
+                              <SelectItem
+                                key={userClub.clubs.id}
+                                value={userClub.clubs.id.toString()}
+                              >
+                                <div className="flex items-center space-x-2">
+                                  <Building className="h-4 w-4" />
+                                  <div>
+                                    <div className="font-medium">{userClub.clubs.name}</div>
+                                    <div className="text-sm text-neutral-medium flex items-center">
+                                      <MapPin className="h-3 w-3 mr-1" />
+                                      {userClub.clubs.location}
+                                    </div>
+                                  </div>
+                                </div>
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                         <FormDescription>
-                          Select the time for your tee time
+                          Select the club where you're hosting this tee time
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-                </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Date and Time */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <FormField
+                      control={form.control}
+                      name="date"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-col">
+                          <FormLabel>Date *</FormLabel>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <FormControl>
+                                <Button
+                                  variant="outline"
+                                  className={cn(
+                                    "w-full pl-3 text-left font-normal",
+                                    !field.value && "text-muted-foreground"
+                                  )}
+                                  disabled={isCreating}
+                                >
+                                  {field.value ? (
+                                    format(field.value, "PPP")
+                                  ) : (
+                                    <span>Pick a date</span>
+                                  )}
+                                  <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                </Button>
+                              </FormControl>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              <Calendar
+                                mode="single"
+                                selected={field.value}
+                                onSelect={field.onChange}
+                                disabled={(date) => date < new Date()}
+                                initialFocus
+                              />
+                            </PopoverContent>
+                          </Popover>
+                          <FormDescription>
+                            Select the date for your tee time
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="time"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Time *</FormLabel>
+                          <Select
+                            onValueChange={field.onChange}
+                            value={field.value}
+                            disabled={isCreating}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select time" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {timeOptions.map((time) => (
+                                <SelectItem key={time} value={time}>
+                                  {time}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormDescription>
+                            Select the time for your tee time
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  {/* Price and Players */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <FormField
+                      control={form.control}
+                      name="price"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Price per Player *</FormLabel>
+                          <FormControl>
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-medium">$</span>
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                placeholder="0.00"
+                                className="pl-7"
+                                {...field}
+                                disabled={isCreating}
+                              />
+                            </div>
+                          </FormControl>
+                          <FormDescription>
+                            Set the price per player for this tee time
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="playersAllowed"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Number of Players *</FormLabel>
+                          <Select
+                            onValueChange={field.onChange}
+                            value={field.value.toString()}
+                            disabled={isCreating}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select players" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="1">1 player</SelectItem>
+                              <SelectItem value="2">2 players</SelectItem>
+                              <SelectItem value="3">3 players</SelectItem>
+                              <SelectItem value="4">4 players</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormDescription>
+                            How many players can join this tee time
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  {/* Notes */}
                   <FormField
                     control={form.control}
-                    name="price"
+                    name="notes"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Price per Player</FormLabel>
+                        <FormLabel>Additional Notes</FormLabel>
                         <FormControl>
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2">$</span>
-                            <Input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              placeholder="0.00"
-                              className="pl-7"
-                              {...field}
-                              disabled={isPending}
-                            />
-                          </div>
+                          <Textarea
+                            placeholder="Share any additional details about this tee time (dress code, cart requirements, skill level, etc.)..."
+                            className="resize-none min-h-[120px]"
+                            {...field}
+                            disabled={isCreating}
+                          />
                         </FormControl>
                         <FormDescription>
-                          Set the price per player for this tee time
+                          Provide any additional information guests should know
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
 
-                  <FormField
-                    control={form.control}
-                    name="playersAllowed"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Number of Players</FormLabel>
-                        <Select
-                          onValueChange={field.onChange}
-                          defaultValue={field.value}
-                          disabled={isPending}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select number of players" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="1">1 player</SelectItem>
-                            <SelectItem value="2">2 players</SelectItem>
-                            <SelectItem value="3">3 players</SelectItem>
-                            <SelectItem value="4">4 players</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormDescription>
-                          Select how many players can join this tee time
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <FormField
-                  control={form.control}
-                  name="notes"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Additional Notes</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          placeholder="Share any additional details about this tee time..."
-                          className="resize-none min-h-[120px]"
-                          {...field}
-                          disabled={isPending}
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        Provide any additional information guests should know
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div className="flex justify-end gap-3">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => navigate("/dashboard")}
-                    disabled={isPending}
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="submit" disabled={isPending}>
-                    {isPending ? "Creating..." : "Create Listing"}
-                  </Button>
-                </div>
-              </form>
-            </Form>
-          ) : (
-            <div className="text-center py-12 border rounded-lg bg-secondary">
-              <Volleyball className="h-12 w-12 mx-auto text-neutral-medium mb-4" />
-              <h2 className="text-xl font-medium mb-2">No Clubs Found</h2>
-              <p className="text-neutral-medium mb-6">
-                You need to add a golf club to your profile before you can create a tee time listing.
-              </p>
-              <Button onClick={() => navigate("/dashboard")}>
-                Go to Dashboard
-              </Button>
-            </div>
-          )}
+                  {/* Action Buttons */}
+                  <div className="flex justify-end space-x-4 pt-6">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => navigate("/dashboard")}
+                      disabled={isCreating}
+                    >
+                      Cancel
+                    </Button>
+                    <Button 
+                      type="submit" 
+                      disabled={isCreating}
+                      className="min-w-[120px]"
+                    >
+                      {isCreating ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Creating...
+                        </>
+                      ) : (
+                        "Create Listing"
+                      )}
+                    </Button>
+                  </div>
+                </form>
+              </Form>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </>
