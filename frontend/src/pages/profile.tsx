@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useParams, Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
-import { queryClient, supabaseQueries } from "@/lib/queryClient";
+import { useUserClubs, useHostTeeTimeListingsSupabase, type UserClub, type TeeTimeListing } from "@/hooks/use-profile";
+import { queryClient } from "@/lib/queryClient";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -29,38 +30,6 @@ interface SupabaseProfile {
   updated_at: string;
 }
 
-// Interface for user clubs data from Supabase
-interface UserClub {
-  id: string;
-  user_id: string;
-  club_id: string;
-  member_since: string;
-  clubs: {
-    id: string;
-    name: string;
-    location: string;
-  };
-}
-
-// Interface for tee time listings from Supabase
-interface TeeTimeListing {
-  id: string;
-  host_id: string;
-  club_id: string;
-  date: string;
-  price: number;
-  players_allowed: number;
-  notes?: string;
-  status: string;
-  created_at: string;
-  clubs?: {
-    id: string;
-    name: string;
-    location: string;
-    image_url?: string;
-  };
-  bookings?: any[];
-}
 
 // Interface for reviews from Supabase
 interface Review {
@@ -90,7 +59,10 @@ export default function ProfilePage() {
   
   // Fetch user profile data using Supabase
   const { data: profileUser, isLoading, error } = useQuery<SupabaseProfile>({
-    queryKey: supabaseQueries.profile.byId(userId),
+    queryKey: [
+      'supabase:profiles:single',
+      { id: userId }
+    ],
     enabled: !!userId,
     retry: 2,
     staleTime: 30 * 1000, // 30 seconds
@@ -98,35 +70,33 @@ export default function ProfilePage() {
   });
 
   // Fetch user clubs if the user is a host
-  const { data: userClubs = [] } = useQuery<UserClub[]>({
-    queryKey: [
-      'supabase:user_clubs:select',
-      {
-        columns: `
-          id,
-          member_since,
-          clubs (
-            id,
-            name,
-            location
-          )
-        `,
-        eq: { user_id: userId },
-        order: { column: 'member_since', ascending: false }
-      }
-    ],
-    enabled: !!profileUser?.is_host && !!userId,
-  });
+  const { data: userClubs = [] } = useUserClubs(userId, !!profileUser?.is_host && !!userId);
 
   // Fetch user's tee time listings if they are a host
-  const { data: teeTimeListings = [] } = useQuery<TeeTimeListing[]>({
-    queryKey: supabaseQueries.teeTimeListings.byHostId(userId),
-    enabled: !!profileUser?.is_host && !!userId,
-  });
+  const { data: teeTimeListings = [] } = useHostTeeTimeListingsSupabase(userId, !!profileUser?.is_host && !!userId);
 
   // Fetch reviews about the user
   const { data: reviews = [] } = useQuery<Review[]>({
-    queryKey: supabaseQueries.reviews.byTargetId(userId, profileUser?.is_host ? 'host' : 'guest'),
+    queryKey: [
+      'supabase:reviews:select',
+      {
+        columns: `
+          *,
+          reviewer:reviewer_id (
+            id,
+            username,
+            first_name,
+            last_name,
+            profile_image_url
+          )
+        `,
+        eq: { 
+          target_id: userId, 
+          target_type: profileUser?.is_host ? 'host' : 'guest' 
+        },
+        order: { column: 'created_at', ascending: false }
+      }
+    ],
     enabled: !!profileUser && !!userId,
   });
 

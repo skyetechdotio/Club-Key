@@ -1,159 +1,270 @@
-import { useState, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useAuth } from "@/context/auth-context";
-import { Loader2, Upload } from "lucide-react";
-import { Club } from "@shared/schema";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
+import { queryClient } from "@/lib/queryClient";
+import { supabase } from "@/lib/supabaseClient";
+import { useAuth } from "@/hooks/use-auth";
+import { useClubs, type Club } from "@/hooks/use-profile";
+import { Loader2, Camera, Plus, MapPin, Building, ArrowRight, CheckCircle } from "lucide-react";
+import { Helmet } from 'react-helmet';
+
+// Steps enum for onboarding flow
+enum OnboardingStep {
+  PROFILE = 'profile',
+  CLUB_SELECTION = 'club_selection',
+  COMPLETE = 'complete'
+}
+
+// Interface for profile data from Supabase
+interface ProfileData {
+  id: string;
+  username: string;
+  first_name?: string;
+  last_name?: string;
+  bio?: string;
+  profile_image_url?: string;
+  is_host: boolean;
+  onboarding_completed?: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// Interface for new club creation
+interface NewClubData {
+  name: string;
+  location: string;
+  description?: string;
+}
 
 export default function ProfileOnboarding() {
-  const [showClubForm, setShowClubForm] = useState(false);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [profileImage, setProfileImage] = useState("");
-  const [, navigate] = useLocation();
   const { toast } = useToast();
-
-  // Use auth context to get user and refresh function
-  const { user, isLoading: isUserLoading, refreshUserData, isAuthenticated } = useAuth();
+  const [, navigate] = useLocation();
+  const { user, isAuthenticated, refreshUserData } = useAuth();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // If user is not authenticated, redirect to home
-  useEffect(() => {
-    if (!isUserLoading && !isAuthenticated) {
-      navigate("/");
-    }
-  }, [isUserLoading, isAuthenticated, navigate]);
+  // Current step state
+  const [currentStep, setCurrentStep] = useState<OnboardingStep>(OnboardingStep.PROFILE);
+  
+  // Profile form state
+  const [bio, setBio] = useState("");
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [newProfileImageUrl, setNewProfileImageUrl] = useState<string | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  
+  // Club selection state
+  const [selectedClubId, setSelectedClubId] = useState<string>("");
+  const [showNewClubForm, setShowNewClubForm] = useState(false);
+  const [newClubName, setNewClubName] = useState("");
+  const [newClubLocation, setNewClubLocation] = useState("");
+  const [newClubDescription, setNewClubDescription] = useState("");
 
-  // Set initial values
-  useEffect(() => {
-    if (user) {
-      // Set the profile image if exists
-      if (user.profileImage) {
-        setImagePreview(user.profileImage);
-        setProfileImage(user.profileImage);
+  // Redirect if not authenticated
+  if (!isAuthenticated || !user) {
+    navigate("/");
+    return null;
+  }
+
+  // Fetch current profile data to pre-fill form
+  const { data: profileData, isLoading: isLoadingProfile } = useQuery<ProfileData>({
+    queryKey: [
+      'supabase:profiles:single',
+      { id: user.id }
+    ],
+    enabled: !!user?.id,
+    onSuccess: (data) => {
+      // Pre-fill form fields with current data
+      setBio(data.bio || "");
+      setImagePreview(data.profile_image_url || null);
+      
+      // If profile is already completed, skip to dashboard
+      if (data.onboarding_completed) {
+        navigate("/dashboard");
       }
     }
-  }, [user]);
-
-  // Get all clubs
-  const { data: clubs } = useQuery({
-    queryKey: ["/api/clubs"],
-    queryFn: async () => {
-      const res = await apiRequest("GET", "/api/clubs");
-      if (!res.ok) {
-        throw new Error("Failed to load clubs");
-      }
-      return res.json();
-    },
   });
 
-  // Handle file upload for profile image 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      // Check if file is too large (> 1MB) to compress
-      if (file.size > 1024 * 1024) {
-        // Create a compressed image
-        const img = new Image();
-        const reader = new FileReader();
-        
-        reader.onload = (event) => {
-          img.onload = () => {
-            // Create a canvas element to compress the image
-            const canvas = document.createElement('canvas');
-            let width = img.width;
-            let height = img.height;
-            
-            // Calculate new dimensions while maintaining aspect ratio
-            // Target max width/height of 800px
-            const MAX_SIZE = 800;
-            if (width > height && width > MAX_SIZE) {
-              height = Math.round((height * MAX_SIZE) / width);
-              width = MAX_SIZE;
-            } else if (height > MAX_SIZE) {
-              width = Math.round((width * MAX_SIZE) / height);
-              height = MAX_SIZE;
-            }
-            
-            canvas.width = width;
-            canvas.height = height;
-            
-            // Draw the resized image to canvas
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              ctx.drawImage(img, 0, 0, width, height);
-              
-              // Convert to base64 with reduced quality (0.7 = 70% quality)
-              const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
-              
-              // Use the compressed image
-              setImagePreview(compressedBase64);
-              setProfileImage(compressedBase64);
-            }
-          };
-          
-          // Set the image source to the loaded file
-          img.src = event.target?.result as string;
-        };
-        
-        reader.readAsDataURL(file);
-      } else {
-        // For small files, no need to compress
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const base64String = reader.result as string;
-          setImagePreview(base64String);
-          setProfileImage(base64String);
-        };
-        reader.readAsDataURL(file);
+  // Fetch clubs for selection
+  const { data: clubs = [], isLoading: isLoadingClubs } = useClubs();
+
+  // Handle file selection and upload to Supabase Storage
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !user) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast({
+        title: "Invalid file type",
+        description: "Please select an image file (PNG, JPG, etc.)",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate file size (5MB limit)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: "File too large",
+        description: "Please select an image smaller than 5MB",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsUploadingImage(true);
+
+    try {
+      // Generate unique file path: public/{userId}/profile.{extension}
+      const fileExtension = file.name.split('.').pop();
+      const fileName = `profile.${fileExtension}`;
+      const filePath = `public/${user.id}/${fileName}`;
+
+      // Upload to Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('profile-pictures')
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) {
+        throw new Error(uploadError.message);
       }
+
+      // Get public URL for the uploaded image
+      const { data: urlData } = supabase.storage
+        .from('profile-pictures')
+        .getPublicUrl(uploadData.path);
+
+      const publicUrl = urlData.publicUrl;
+
+      // Update local state
+      setNewProfileImageUrl(publicUrl);
+      setImagePreview(publicUrl);
+
+      toast({
+        title: "Image uploaded",
+        description: "Your profile picture has been uploaded successfully",
+      });
+
+    } catch (error: any) {
+      console.error('Error uploading image:', error);
+      toast({
+        title: "Upload failed",
+        description: error.message || "Failed to upload image. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploadingImage(false);
     }
   };
 
-  // Update profile mutation
+  // Profile update mutation
   const updateProfileMutation = useMutation({
-    mutationFn: async (formData: FormData) => {
-      if (!user?.id) {
-        throw new Error("User ID not found. Please try logging out and back in.");
-      }
-      
-      const data = {
-        firstName: user.firstName,
-        lastName: user.lastName, 
-        bio: formData.get('bio') as string,
-        profileImage: profileImage || '',
+    mutationFn: async () => {
+      const updateData: any = {
+        bio: bio.trim() || null,
+        updated_at: new Date().toISOString(),
       };
-      
-      const res = await apiRequest("PUT", `/api/users/${user.id}`, data);
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({ message: "Failed to update profile" }));
-        throw new Error(errorData.message || "Failed to update profile");
+
+      // Add new profile image URL if one was uploaded
+      if (newProfileImageUrl) {
+        updateData.profile_image_url = newProfileImageUrl;
       }
-      
-      return await res.json();
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .update(updateData)
+        .eq('id', user.id)
+        .select()
+        .single();
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      return data;
     },
     onSuccess: async () => {
-      // Refresh user data
       await refreshUserData();
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       
-      if (user?.id) {
-        queryClient.invalidateQueries({ queryKey: [`/api/users/${user.id}`] });
-      }
-      
+      // Invalidate related queries
+      queryClient.invalidateQueries({ 
+        queryKey: ['supabase:profiles:single', { id: user.id }] 
+      });
+
       toast({
         title: "Profile updated",
-        description: "Your profile has been successfully updated.",
+        description: "Your profile information has been saved",
       });
-      
-      setShowClubForm(true);
+
+      // Move to next step based on user type
+      if (user.isHost) {
+        setCurrentStep(OnboardingStep.CLUB_SELECTION);
+      } else {
+        // For guests, complete onboarding
+        completeOnboarding();
+      }
     },
     onError: (error: Error) => {
+      console.error('Profile update error:', error);
       toast({
-        title: "Error updating profile",
-        description: error.message,
+        title: "Update failed",
+        description: error.message || "Failed to update profile. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Create new club mutation
+  const createClubMutation = useMutation({
+    mutationFn: async (clubData: NewClubData) => {
+      const { data, error } = await supabase
+        .from('clubs')
+        .insert({
+          name: clubData.name,
+          location: clubData.location,
+          description: clubData.description || null,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      return data;
+    },
+    onSuccess: (newClub) => {
+      toast({
+        title: "Club created",
+        description: `${newClub.name} has been added to our directory`,
+      });
+      
+      // Refresh clubs list
+      queryClient.invalidateQueries({ 
+        queryKey: ['supabase:clubs:select'] 
+      });
+      
+      // Select the newly created club
+      setSelectedClubId(newClub.id.toString());
+      setShowNewClubForm(false);
+      
+      // Reset form
+      setNewClubName("");
+      setNewClubLocation("");
+      setNewClubDescription("");
+    },
+    onError: (error: Error) => {
+      console.error('Club creation error:', error);
+      toast({
+        title: "Failed to create club",
+        description: error.message || "Failed to create club. Please try again.",
         variant: "destructive",
       });
     },
@@ -161,238 +272,491 @@ export default function ProfileOnboarding() {
 
   // Add user to club mutation
   const addUserToClubMutation = useMutation({
-    mutationFn: async (data: { userId: number, clubId: number }) => {
-      const res = await apiRequest("POST", "/api/user-clubs", data);
-      if (!res.ok) {
-        throw new Error("Failed to add user to club");
+    mutationFn: async (clubId: number) => {
+      const { data, error } = await supabase
+        .from('user_clubs')
+        .insert({
+          user_id: user.id,
+          club_id: clubId,
+          member_since: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (error) {
+        throw new Error(error.message);
       }
-      return res.json();
+
+      return data;
     },
     onSuccess: async () => {
-      await refreshUserData();
+      toast({
+        title: "Club affiliation saved",
+        description: "You've been successfully affiliated with your club",
+      });
       
-      if (user?.id) {
-        queryClient.invalidateQueries({ queryKey: [`/api/users/${user.id}/clubs`] });
-      }
+      // Invalidate related queries
+      queryClient.invalidateQueries({ 
+        queryKey: ['supabase:user_clubs:select'] 
+      });
       
-      // Mark onboarding as complete
-      if (user?.id) {
-        try {
-          const res = await apiRequest("PUT", `/api/users/${user.id}`, {
-            onboardingCompleted: true
-          });
-          
-          if (res.ok) {
-            await refreshUserData();
-            toast({
-              title: "Setup complete!",
-              description: "Your profile setup is complete. Welcome to Linx!",
-            });
-          }
-        } catch (error) {
-          console.error("Error completing onboarding:", error);
-        }
-      }
-      
-      // Navigate to dashboard
-      navigate("/dashboard");
+      // Complete onboarding
+      await completeOnboarding();
     },
     onError: (error: Error) => {
+      console.error('Club affiliation error:', error);
       toast({
-        title: "Error adding club membership",
-        description: error.message,
+        title: "Failed to join club",
+        description: error.message || "Failed to join club. Please try again.",
         variant: "destructive",
       });
     },
   });
 
-  // Handle direct form submission for profile
+  // Complete onboarding mutation
+  const completeOnboardingMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .update({
+          onboarding_completed: true,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', user.id)
+        .select()
+        .single();
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      return data;
+    },
+    onSuccess: async () => {
+      await refreshUserData();
+      
+      queryClient.invalidateQueries({ 
+        queryKey: ['supabase:profiles:single', { id: user.id }] 
+      });
+
+      toast({
+        title: "Welcome to ClubKey!",
+        description: "Your onboarding is complete. Let's get started!",
+      });
+
+      // Navigate to dashboard
+      navigate("/dashboard");
+    },
+    onError: (error: Error) => {
+      console.error('Onboarding completion error:', error);
+      toast({
+        title: "Error completing setup",
+        description: error.message || "Failed to complete onboarding.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Helper function to complete onboarding
+  const completeOnboarding = () => {
+    completeOnboardingMutation.mutate();
+  };
+
+  // Handle profile form submission
   const handleProfileSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    updateProfileMutation.mutate(formData);
+    updateProfileMutation.mutate();
   };
 
   // Handle club selection
-  const handleClubSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    const clubId = formData.get('clubId') as string;
-    
-    if (user?.id && clubId) {
-      addUserToClubMutation.mutate({
-        userId: user.id,
-        clubId: parseInt(clubId)
-      });
-    } else {
+  const handleClubSelection = () => {
+    if (!selectedClubId) {
       toast({
         title: "Please select a club",
-        description: "Please select an existing club or create a new one.",
+        description: "Choose a club from the list or create a new one.",
         variant: "destructive",
       });
+      return;
     }
+
+    addUserToClubMutation.mutate(parseInt(selectedClubId));
   };
 
-  // Skip club selection
-  const skipClub = () => {
-    if (user?.id) {
-      apiRequest("PUT", `/api/users/${user.id}`, {
-        onboardingCompleted: true
-      }).then(async (res) => {
-        if (res.ok) {
-          await refreshUserData();
-          
-          toast({
-            title: "Setup complete!",
-            description: "Your profile setup is complete. Welcome to Linx!",
-          });
-          
-          navigate("/dashboard");
-        }
-      }).catch(error => {
-        console.error("Error completing onboarding:", error);
+  // Handle new club creation
+  const handleCreateClub = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    
+    if (!newClubName.trim() || !newClubLocation.trim()) {
+      toast({
+        title: "Missing information",
+        description: "Please provide the club name and location.",
+        variant: "destructive",
       });
+      return;
     }
+
+    createClubMutation.mutate({
+      name: newClubName.trim(),
+      location: newClubLocation.trim(),
+      description: newClubDescription.trim() || undefined,
+    });
   };
 
-  if (isUserLoading) {
+  // Skip club selection (for hosts who want to add it later)
+  const skipClubSelection = () => {
+    completeOnboarding();
+  };
+
+  // Loading state for initial profile fetch
+  if (isLoadingProfile) {
     return (
-      <div className="h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="container mx-auto px-4 py-8">
+        <div className="flex flex-col items-center justify-center min-h-[60vh]">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+          <p className="text-neutral-medium">Loading your profile...</p>
+        </div>
       </div>
     );
   }
 
+  if (!profileData) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="flex flex-col items-center justify-center min-h-[60vh]">
+          <h1 className="text-2xl font-bold text-neutral-dark mb-2">Profile not found</h1>
+          <p className="text-neutral-medium mb-4">Unable to load your profile data</p>
+          <Button onClick={() => navigate("/")}>
+            Go Home
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const getInitials = () => {
+    if (user.firstName && user.lastName) {
+      return `${user.firstName[0]}${user.lastName[0]}`;
+    }
+    return profileData.username?.substring(0, 2).toUpperCase() || "U";
+  };
+
+  const getStepTitle = () => {
+    switch (currentStep) {
+      case OnboardingStep.PROFILE:
+        return "Complete Your Profile";
+      case OnboardingStep.CLUB_SELECTION:
+        return "Select Your Golf Club";
+      case OnboardingStep.COMPLETE:
+        return "Welcome to ClubKey!";
+      default:
+        return "Profile Setup";
+    }
+  };
+
+  const getStepDescription = () => {
+    switch (currentStep) {
+      case OnboardingStep.PROFILE:
+        return "Add your bio and profile picture to help others connect with you";
+      case OnboardingStep.CLUB_SELECTION:
+        return "Choose the golf club you're affiliated with to start listing tee times";
+      case OnboardingStep.COMPLETE:
+        return "Your profile setup is complete!";
+      default:
+        return "";
+    }
+  };
+
   return (
-    <div className="container max-w-3xl mx-auto px-4 py-8">
-      <Card className="shadow-md">
-        <CardHeader className="pb-4">
-          <CardTitle className="text-2xl font-bold text-primary text-center">
-            {showClubForm ? "Select Your Golf Club" : "Complete Your Profile"}
-          </CardTitle>
-        </CardHeader>
-        
-        <CardContent>
-          {/* Profile Form */}
-          {!showClubForm && (
-            <form onSubmit={handleProfileSubmit} className="space-y-6">
-              <div className="flex flex-col items-center mb-6">
-                {/* Profile Image Upload */}
-                <div className="w-32 h-32 rounded-full overflow-hidden bg-gray-200 mb-4">
-                  {imagePreview ? (
-                    <img 
-                      src={imagePreview} 
-                      alt="Profile" 
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-primary/10 text-primary text-2xl font-bold">
-                      {user?.firstName?.[0]}{user?.lastName?.[0]}
+    <>
+      <Helmet>
+        <title>Profile Setup | ClubKey</title>
+        <meta name="description" content="Complete your ClubKey profile setup" />
+      </Helmet>
+
+      <div className="container mx-auto px-4 py-8">
+        <div className="max-w-2xl mx-auto">
+          {/* Progress Indicator */}
+          <div className="mb-8">
+            <div className="flex items-center justify-center space-x-4">
+              <div className={`flex items-center space-x-2 ${
+                currentStep === OnboardingStep.PROFILE ? 'text-primary' : 'text-green-600'
+              }`}>
+                {currentStep === OnboardingStep.PROFILE ? (
+                  <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-bold">
+                    1
+                  </div>
+                ) : (
+                  <CheckCircle className="w-8 h-8" />
+                )}
+                <span className="font-medium">Profile</span>
+              </div>
+              
+              {user.isHost && (
+                <>
+                  <ArrowRight className="w-4 h-4 text-neutral-medium" />
+                  <div className={`flex items-center space-x-2 ${
+                    currentStep === OnboardingStep.CLUB_SELECTION ? 'text-primary' : 
+                    currentStep === OnboardingStep.COMPLETE ? 'text-green-600' : 'text-neutral-medium'
+                  }`}>
+                    {currentStep === OnboardingStep.CLUB_SELECTION ? (
+                      <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-bold">
+                        2
+                      </div>
+                    ) : currentStep === OnboardingStep.COMPLETE ? (
+                      <CheckCircle className="w-8 h-8" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-neutral-light text-neutral-medium flex items-center justify-center text-sm font-bold">
+                        2
+                      </div>
+                    )}
+                    <span className="font-medium">Club</span>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-center">{getStepTitle()}</CardTitle>
+              <p className="text-neutral-medium text-center">
+                {getStepDescription()}
+              </p>
+            </CardHeader>
+            
+            <CardContent>
+              {/* Profile Step */}
+              {currentStep === OnboardingStep.PROFILE && (
+                <form onSubmit={handleProfileSubmit} className="space-y-6">
+                  {/* Profile Picture Section */}
+                  <div className="flex flex-col items-center space-y-4">
+                    <Avatar className="h-32 w-32">
+                      <AvatarImage src={imagePreview || undefined} alt="Profile picture" />
+                      <AvatarFallback className="bg-primary text-white text-2xl">
+                        {getInitials()}
+                      </AvatarFallback>
+                    </Avatar>
+                    
+                    <div className="flex flex-col items-center space-y-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploadingImage}
+                        className="flex items-center space-x-2"
+                      >
+                        {isUploadingImage ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Camera className="h-4 w-4" />
+                        )}
+                        <span>
+                          {isUploadingImage ? "Uploading..." : "Add Picture"}
+                        </span>
+                      </Button>
+                      
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFileUpload}
+                        className="hidden"
+                      />
+                      
+                      <p className="text-xs text-neutral-medium text-center">
+                        Upload a profile picture (PNG, JPG, max 5MB)
+                      </p>
                     </div>
-                  )}
-                </div>
-                
-                <div className="w-full max-w-sm mb-4">
-                  <label 
-                    htmlFor="profile-picture" 
-                    className="cursor-pointer flex items-center justify-center gap-2 w-full py-2 border-2 border-dashed rounded-md border-primary/30 hover:border-primary/50"
-                  >
-                    <Upload className="h-4 w-4" />
-                    {imagePreview ? "Change Photo" : "Upload Photo"}
-                  </label>
-                  <input
-                    id="profile-picture"
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleFileUpload}
-                  />
-                </div>
-                
-                <p className="font-medium">{user?.firstName} {user?.lastName}</p>
-              </div>
-              
-              <div>
-                <label htmlFor="bio" className="block text-sm font-medium mb-1">About You</label>
-                <textarea
-                  id="bio"
-                  name="bio"
-                  defaultValue={user?.bio || ""}
-                  placeholder="Tell us about your golfing experience, favorite courses, or handicap..."
-                  rows={5}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary"
-                />
-              </div>
-              
-              <div className="pt-4">
-                <Button
-                  type="submit"
-                  disabled={updateProfileMutation.isPending}
-                  className="w-full"
-                >
-                  {updateProfileMutation.isPending ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    "Continue"
-                  )}
-                </Button>
-              </div>
-            </form>
-          )}
-          
-          {/* Club Selection Form */}
-          {showClubForm && (
-            <form onSubmit={handleClubSubmit} className="space-y-6">
-              <div className="space-y-4">
-                <div>
-                  <label htmlFor="clubId" className="block text-sm font-medium mb-1">Select Your Golf Club</label>
-                  <select
-                    id="clubId"
-                    name="clubId"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary"
-                  >
-                    <option value="">Select a golf club</option>
-                    {clubs && clubs.map((club: Club) => (
-                      <option key={club.id} value={club.id}>
-                        {club.name} - {club.location}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                
-                <div className="pt-4 flex flex-col gap-4">
+
+                    <div className="text-center">
+                      <h3 className="text-lg font-semibold">
+                        {user.firstName} {user.lastName}
+                      </h3>
+                      {user.isHost && (
+                        <p className="text-sm text-primary font-medium">Host</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Bio Section */}
+                  <div className="space-y-2">
+                    <Label htmlFor="bio">About You</Label>
+                    <Textarea
+                      id="bio"
+                      value={bio}
+                      onChange={(e) => setBio(e.target.value)}
+                      placeholder={user.isHost ? 
+                        "Tell potential guests about your golfing experience, favorite courses, or what makes playing with you special..." :
+                        "Tell hosts about your golfing experience, skill level, or what you're looking for in a golfing partner..."
+                      }
+                      rows={4}
+                      className="resize-none"
+                    />
+                    <p className="text-xs text-neutral-medium">
+                      {user.isHost ? 
+                        "Help guests know what to expect when booking with you" :
+                        "Help hosts understand your playing style and experience level"
+                      }
+                    </p>
+                  </div>
+
+                  {/* Submit Button */}
                   <Button
                     type="submit"
-                    disabled={addUserToClubMutation.isPending}
+                    disabled={updateProfileMutation.isPending || isUploadingImage}
                     className="w-full"
                   >
-                    {addUserToClubMutation.isPending ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Joining Club...
-                      </>
-                    ) : (
-                      "Join Club"
+                    {updateProfileMutation.isPending && (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     )}
+                    {user.isHost ? "Continue to Club Selection" : "Complete Setup"}
                   </Button>
-                  
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={skipClub}
-                    className="w-full"
-                  >
-                    Skip for Now
-                  </Button>
+                </form>
+              )}
+
+              {/* Club Selection Step */}
+              {currentStep === OnboardingStep.CLUB_SELECTION && user.isHost && (
+                <div className="space-y-6">
+                  {!showNewClubForm ? (
+                    <>
+                      {/* Existing Club Selection */}
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="clubSelect">Choose Your Golf Club</Label>
+                          <Select value={selectedClubId} onValueChange={setSelectedClubId}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a golf club" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {isLoadingClubs ? (
+                                <SelectItem value="loading" disabled>
+                                  Loading clubs...
+                                </SelectItem>
+                              ) : (
+                                clubs.map((club) => (
+                                  <SelectItem key={club.id} value={club.id.toString()}>
+                                    <div className="flex items-center space-x-2">
+                                      <Building className="h-4 w-4" />
+                                      <div>
+                                        <div className="font-medium">{club.name}</div>
+                                        <div className="text-sm text-neutral-medium flex items-center">
+                                          <MapPin className="h-3 w-3 mr-1" />
+                                          {club.location}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="text-center">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setShowNewClubForm(true)}
+                            className="flex items-center space-x-2"
+                          >
+                            <Plus className="h-4 w-4" />
+                            <span>My club isn't listed</span>
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex flex-col space-y-3">
+                        <Button
+                          onClick={handleClubSelection}
+                          disabled={!selectedClubId || addUserToClubMutation.isPending}
+                          className="w-full"
+                        >
+                          {addUserToClubMutation.isPending && (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          )}
+                          Join Selected Club
+                        </Button>
+                        
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={skipClubSelection}
+                          disabled={completeOnboardingMutation.isPending}
+                          className="w-full"
+                        >
+                          Skip for Now
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    /* New Club Form */
+                    <form onSubmit={handleCreateClub} className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="clubName">Club Name *</Label>
+                        <Input
+                          id="clubName"
+                          type="text"
+                          value={newClubName}
+                          onChange={(e) => setNewClubName(e.target.value)}
+                          placeholder="Pebble Beach Golf Links"
+                          required
+                        />
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Label htmlFor="clubLocation">Location *</Label>
+                        <Input
+                          id="clubLocation"
+                          type="text"
+                          value={newClubLocation}
+                          onChange={(e) => setNewClubLocation(e.target.value)}
+                          placeholder="Pebble Beach, CA"
+                          required
+                        />
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Label htmlFor="clubDescription">Description (Optional)</Label>
+                        <Textarea
+                          id="clubDescription"
+                          value={newClubDescription}
+                          onChange={(e) => setNewClubDescription(e.target.value)}
+                          placeholder="Brief description of the golf club..."
+                          rows={3}
+                          className="resize-none"
+                        />
+                      </div>
+
+                      <div className="flex flex-col space-y-3">
+                        <Button
+                          type="submit"
+                          disabled={createClubMutation.isPending}
+                          className="w-full"
+                        >
+                          {createClubMutation.isPending && (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          )}
+                          Create Club
+                        </Button>
+                        
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setShowNewClubForm(false)}
+                          className="w-full"
+                        >
+                          Back to Selection
+                        </Button>
+                      </div>
+                    </form>
+                  )}
                 </div>
-              </div>
-            </form>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </>
   );
 }
