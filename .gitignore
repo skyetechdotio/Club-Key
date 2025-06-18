@@ -71,3 +71,4 @@ junit.xml
 # attached_assets/
 
 # If there are other specific generated files from your build or dev process, add them.
+.specstory/history/2025-06-04_23-08-improve-email-verification-user-experience.md

@@ -101,10 +101,15 @@ export default function BasicProfileEdit() {
     setIsUploadingImage(true);
 
     try {
-      // Generate unique file path: public/{userId}/profile.{extension}
+      // Generate unique file path: {userId}/profile.{extension}
       const fileExtension = file.name.split('.').pop();
       const fileName = `profile.${fileExtension}`;
-      const filePath = `public/${user.id}/${fileName}`;
+      const filePath = `${user.id}/${fileName}`;
+
+      console.log("Attempting to upload to Supabase Storage:");
+      console.log("Current user.id:", user.id);
+      console.log("Generated filePath:", filePath);
+      console.log("Bucket name: profile-pictures");
 
       // Upload to Supabase Storage
       const { data: uploadData, error: uploadError } = await supabase.storage

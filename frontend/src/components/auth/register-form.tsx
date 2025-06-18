@@ -80,15 +80,9 @@ export default function RegisterForm({ onSuccess, switchToLogin }: RegisterFormP
       
       console.log("Registration successful in form handler:", result);
       
-      // Show success toast based on whether email confirmation is required
-      if (result.emailVerificationPending) {
-        // Email confirmation is required
-        toast({
-          title: "Registration Successful!",
-          description: "Please check your email to verify your account before logging in.",
-        });
-      } else {
-        // User is immediately signed in
+      // Show success toast only if user is immediately signed in
+      // Email verification pending cases are handled by CheckEmailModal
+      if (!result.emailVerificationPending) {
         toast({
           title: "Welcome to ClubKey!",
           description: "Registration successful! You're now logged in.",
