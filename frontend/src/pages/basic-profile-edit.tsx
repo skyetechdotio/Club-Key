@@ -109,11 +109,11 @@ export default function BasicProfileEdit() {
       console.log("Attempting to upload to Supabase Storage:");
       console.log("Current user.id:", user.id);
       console.log("Generated filePath:", filePath);
-      console.log("Bucket name: profile-pictures");
+      console.log("Bucket name: profile-images");
 
       // Upload to Supabase Storage
       const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('profile-pictures')
+        .from('profile-images')
         .upload(filePath, file, { upsert: true });
 
       if (uploadError) {
@@ -122,7 +122,7 @@ export default function BasicProfileEdit() {
 
       // Get public URL for the uploaded image
       const { data: urlData } = supabase.storage
-        .from('profile-pictures')
+        .from('profile-images')
         .getPublicUrl(uploadData.path);
 
       const publicUrl = urlData.publicUrl;
