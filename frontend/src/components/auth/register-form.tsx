@@ -37,7 +37,7 @@ const registerSchema = z
 type RegisterFormValues = z.infer<typeof registerSchema>;
 
 interface RegisterFormProps {
-  onSuccess: () => void;
+  onSuccess: (result?: { emailVerificationPending?: boolean; email?: string }) => void;
   switchToLogin: () => void;
 }
 
@@ -81,7 +81,7 @@ export default function RegisterForm({ onSuccess, switchToLogin }: RegisterFormP
       console.log("Registration successful in form handler:", result);
       
       // Show success toast based on whether email confirmation is required
-      if (result && !result.session) {
+      if (result.emailVerificationPending) {
         // Email confirmation is required
         toast({
           title: "Registration Successful!",
@@ -95,9 +95,11 @@ export default function RegisterForm({ onSuccess, switchToLogin }: RegisterFormP
         });
       }
       
-      // Call the success callback to close modal
-      // The user will be redirected to onboarding based on their onboardingCompleted status
-      onSuccess();
+      // Call the success callback with registration result information
+      onSuccess({ 
+        emailVerificationPending: result.emailVerificationPending, 
+        email: result.email 
+      });
     } catch (error: any) {
       console.error("Registration error in form handler:", error);
       

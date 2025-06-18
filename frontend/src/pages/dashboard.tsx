@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { useUserBookings, useHostBookings } from "@/hooks/use-tee-times";
+import { useUserBookings, useHostBookings, useUpdateTeeTime } from "@/hooks/use-tee-times";
 import { useHostTeeTimeListingsSupabase } from "@/hooks/use-profile";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +12,7 @@ import { Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useUpdateBookingStatus } from "@/hooks/use-tee-times";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useCreatePaymentIntent } from "@/hooks/use-tee-times";
 import { formatDate, formatTime } from "@/lib/utils";
 import { CalendarDays, CheckCircle, Clock, Edit2, Volleyball, MessageSquare, Star, Users, Loader2, AlertCircle, Building, MapPin } from "lucide-react";
@@ -46,6 +47,7 @@ export default function DashboardPage() {
   const [dialogAction, setDialogAction] = useState<'cancel' | 'complete'>('cancel');
   const { mutate: updateBookingStatus, isPending: isUpdatingStatus } = useUpdateBookingStatus();
   const { mutate: createPaymentIntent, isPending: isCreatingPayment } = useCreatePaymentIntent();
+  const { mutate: updateTeeTime, isPending: isCancellingListing } = useUpdateTeeTime();
 
   // Redirect to login if not authenticated
   if (!isAuthenticated) {
@@ -139,20 +141,29 @@ export default function DashboardPage() {
   };
 
   const handleEditListing = (listingId: string) => {
-    toast({
-      title: "Feature Coming Soon",
-      description: "Editing listings will be available soon!"
-    });
-    // TODO: Navigate to edit listing page
-    // navigate(`/edit-listing/${listingId}`);
+    navigate(`/edit-listing/${listingId}`);
   };
 
   const handleCancelListing = (listingId: string) => {
-    toast({
-      title: "Feature Coming Soon", 
-      description: "Cancelling listings will be available soon!"
+    updateTeeTime({
+      id: listingId,
+      status: 'cancelled'
+    }, {
+      onSuccess: () => {
+        toast({
+          title: "Listing Cancelled",
+          description: "Your tee time listing has been cancelled successfully.",
+        });
+      },
+      onError: (error) => {
+        console.error('Cancel listing error:', error);
+        toast({
+          title: "Failed to Cancel Listing",
+          description: error.message || "An error occurred while cancelling your listing. Please try again.",
+          variant: "destructive",
+        });
+      },
     });
-    // TODO: Implement cancel listing functionality
   };
 
   return (
@@ -541,18 +552,72 @@ export default function DashboardPage() {
                                         variant="outline" 
                                         className="w-full"
                                         onClick={() => handleEditListing(teeTime.id)}
+                                        disabled={isCancellingListing}
                                       >
                                         <Edit2 className="mr-2 h-4 w-4" /> Edit
                                       </Button>
                                       
-                                      {teeTime.status === 'available' && (
-                                        <Button 
-                                          variant="outline" 
-                                          className="w-full text-destructive hover:text-destructive"
-                                          onClick={() => handleCancelListing(teeTime.id)}
-                                        >
-                                          Cancel
-                                        </Button>
+                                      {(teeTime.status === 'available' || teeTime.status === 'booked') && (
+                                        <AlertDialog>
+                                          <AlertDialogTrigger asChild>
+                                            <Button 
+                                              variant="outline" 
+                                              className="w-full text-destructive hover:text-destructive"
+                                              disabled={isCancellingListing}
+                                            >
+                                              {isCancellingListing ? (
+                                                <>
+                                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                  Cancelling...
+                                                </>
+                                              ) : (
+                                                "Cancel"
+                                              )}
+                                            </Button>
+                                          </AlertDialogTrigger>
+                                          <AlertDialogContent>
+                                            <AlertDialogHeader>
+                                              <AlertDialogTitle>Cancel Tee Time Listing</AlertDialogTitle>
+                                              <AlertDialogDescription>
+                                                Are you sure you want to cancel this tee time listing? This action cannot be undone.
+                                                {teeTime.status === 'booked' && (
+                                                  <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                                                    <p className="text-sm text-yellow-800">
+                                                      <strong>Warning:</strong> This listing has active bookings. Cancelling will affect existing reservations.
+                                                    </p>
+                                                  </div>
+                                                )}
+                                              </AlertDialogDescription>
+                                            </AlertDialogHeader>
+                                            <div className="py-4">
+                                              <div className="space-y-2">
+                                                <p><strong>Club:</strong> {teeTime.clubs?.name}</p>
+                                                <p><strong>Date:</strong> {formatDate(teeTime.date)}</p>
+                                                <p><strong>Time:</strong> {formatTime(teeTime.date)}</p>
+                                                <p><strong>Price:</strong> ${teeTime.price} per player</p>
+                                              </div>
+                                            </div>
+                                            <AlertDialogFooter>
+                                              <AlertDialogCancel disabled={isCancellingListing}>
+                                                Keep Listing
+                                              </AlertDialogCancel>
+                                              <AlertDialogAction
+                                                onClick={() => handleCancelListing(teeTime.id)}
+                                                disabled={isCancellingListing}
+                                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                              >
+                                                {isCancellingListing ? (
+                                                  <>
+                                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                    Cancelling...
+                                                  </>
+                                                ) : (
+                                                  "Yes, Cancel Listing"
+                                                )}
+                                              </AlertDialogAction>
+                                            </AlertDialogFooter>
+                                          </AlertDialogContent>
+                                        </AlertDialog>
                                       )}
                                     </div>
                                   </div>

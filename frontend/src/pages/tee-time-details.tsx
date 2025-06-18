@@ -81,14 +81,14 @@ export default function TeeTimeDetailsPage() {
       // Store booking information in localStorage temporarily
       const bookingInfo = {
         teeTimeId: teeTime.id,
-        guestId: user.id,
+        guestId: user.id, // UUID from Supabase auth
         numberOfPlayers: parseInt(playerCount),
         totalPrice: teeTime.price * parseInt(playerCount),
       };
       
       localStorage.setItem('pendingBookingInfo', JSON.stringify(bookingInfo));
       
-      // Navigate directly to a pre-checkout page that will handle booking creation and payment
+      // Navigate to pre-checkout page for booking confirmation
       navigate(`/pre-checkout/${teeTime.id}`);
     }
   };
@@ -146,7 +146,7 @@ export default function TeeTimeDetailsPage() {
   return (
     <>
       <Helmet>
-        <title>{teeTime.club?.name} Tee Time | Linx</title>
+        <title>{teeTime.club?.name} Tee Time | ClubKey</title>
         <meta name="description" content={`Book a tee time at ${teeTime.club?.name} hosted by ${hostName}. ${teeTime.club?.location}. Available on ${formatDate(new Date(teeTime.date), {month: 'long', day: 'numeric', year: 'numeric'})} at ${formatTime(new Date(teeTime.date))}.`} />
       </Helmet>
       

@@ -21,6 +21,7 @@ import ProfileEdit from "@/pages/profile-edit";
 import BasicProfileEdit from "@/pages/basic-profile-edit";
 import Dashboard from "@/pages/dashboard";
 import CreateListing from "@/pages/create-listing";
+import EditListingPage from "@/pages/EditListingPage";
 import CheckoutPage from "@/pages/checkout";
 import PreCheckoutPage from "@/pages/pre-checkout";
 import MessagesPage from "@/pages/messages";
@@ -34,6 +35,7 @@ import ContactPage from "@/pages/contact";
 import HelpPage from "@/pages/help";
 import UpdatePasswordPage from "@/pages/UpdatePasswordPage";
 import AuthModal from "@/components/auth/auth-modal";
+import CheckEmailModal from "@/components/auth/CheckEmailModal";
 import SanityCheckComponent from "@/components/_dev_examples/SanityCheckComponent";
 import { Loader2 } from "lucide-react";
 
@@ -199,6 +201,9 @@ function Router({ openAuthModal }: { openAuthModal: (view: "login" | "register" 
           <Route path="/create-listing">
             <HostOnlyRoute path="/create-listing" component={CreateListing} />
           </Route>
+          <Route path="/edit-listing/:listingId">
+            <HostOnlyRoute path="/edit-listing/:listingId" component={EditListingPage} />
+          </Route>
           
           {/* Standard pages */}
           <Route path="/about" component={AboutPage} />
@@ -219,6 +224,8 @@ function Router({ openAuthModal }: { openAuthModal: (view: "login" | "register" 
 function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalView, setAuthModalView] = useState<"login" | "register" | "reset-password">("login");
+  const [showCheckEmailModal, setShowCheckEmailModal] = useState(false);
+  const [emailForVerification, setEmailForVerification] = useState<string | null>(null);
 
   // Open auth modal function to be passed to context and Router
   const openAuthModal = (view: "login" | "register" | "reset-password" = "login") => {
@@ -226,8 +233,12 @@ function App() {
     setIsAuthModalOpen(true);
   };
 
-  const closeAuthModal = () => {
-    setIsAuthModalOpen(false);
+  const closeAuthModal = (result?: { emailVerificationPending?: boolean; email?: string }) => {
+    setIsAuthModalOpen(false); // Close the main AuthModal
+    if (result?.emailVerificationPending && result.email) {
+      setEmailForVerification(result.email);
+      setShowCheckEmailModal(true); // Trigger the new "Check Email" modal
+    }
   };
 
   return (
@@ -244,6 +255,11 @@ function App() {
                 onClose={closeAuthModal} 
                 view={authModalView}
                 setView={setAuthModalView}
+              />
+              <CheckEmailModal
+                isOpen={showCheckEmailModal}
+                onClose={() => setShowCheckEmailModal(false)}
+                email={emailForVerification}
               />
             </TooltipProvider>
           </ChatProvider>

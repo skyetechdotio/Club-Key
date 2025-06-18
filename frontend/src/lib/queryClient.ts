@@ -94,6 +94,12 @@ async function handleSupabaseQuery(
           });
         }
         
+        if (selectOptions.ilike) {
+          Object.entries(selectOptions.ilike).forEach(([key, value]) => {
+            query = query.ilike(key, value as any);
+          });
+        }
+        
         if (selectOptions.in) {
           Object.entries(selectOptions.in).forEach(([key, value]) => {
             query = query.in(key, value as any[]);
@@ -112,6 +118,47 @@ async function handleSupabaseQuery(
         
         if (selectOptions.range) {
           query = query.range(selectOptions.range.from, selectOptions.range.to);
+        }
+        
+        // Handle complex filters object for search functionality
+        if (selectOptions.filters) {
+          const filters = selectOptions.filters;
+          
+          // Location filter - search in club names and locations
+          if (filters.location && filters.location.trim()) {
+            query = query.or(`clubs.name.ilike.%${filters.location}%,clubs.location.ilike.%${filters.location}%`);
+          }
+          
+          // Date range filters
+          if (filters.date) {
+            const startDate = new Date(filters.date);
+            startDate.setHours(0, 0, 0, 0);
+            query = query.gte('date', startDate.toISOString());
+            
+            if (filters.endDate) {
+              const endDate = new Date(filters.endDate);
+              endDate.setHours(23, 59, 59, 999);
+              query = query.lte('date', endDate.toISOString());
+            } else {
+              // If only start date, search for that entire day
+              const endOfDay = new Date(startDate);
+              endOfDay.setHours(23, 59, 59, 999);
+              query = query.lte('date', endOfDay.toISOString());
+            }
+          }
+          
+          // Players filter - ensure listing allows at least the requested number of players
+          if (filters.players && filters.players !== '0') {
+            query = query.gte('players_allowed', parseInt(filters.players));
+          }
+          
+          // Always filter for available listings only
+          query = query.eq('status', 'available');
+          
+          // Ensure future dates only
+          if (!filters.date) {
+            query = query.gte('date', new Date().toISOString());
+          }
         }
         
         const { data, error } = await query;

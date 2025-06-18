@@ -59,36 +59,59 @@ export interface CreateTeeTimeData {
   notes?: string;
 }
 
+export interface UpdateTeeTimeData {
+  id: string; // UUID for Supabase tee time listing ID
+  clubId?: number;
+  date?: Date | string;
+  price?: number;
+  playersAllowed?: number;
+  notes?: string | null;
+  status?: string;
+}
+
 export interface BookTeeTimeData {
   teeTimeId: number;
-  guestId: number;
+  guestId: string; // UUID for Supabase
   numberOfPlayers: number;
   totalPrice: number;
 }
 
-// Fetch all available tee time listings
-export function useTeeTimeListings(filters?: any) {
+// Interface for search filters
+export interface TeeTimeSearchFilters {
+  location?: string;
+  date?: Date;
+  endDate?: Date;
+  players?: string;
+  distance?: string;
+}
+
+// Fetch all available tee time listings with Supabase
+export function useTeeTimeListings(filters?: TeeTimeSearchFilters) {
   return useQuery({
-    queryKey: ['/api/tee-times', filters],
-    queryFn: async () => {
-      const url = new URL('/api/tee-times', window.location.origin);
-      
-      if (filters) {
-        Object.entries(filters).forEach(([key, value]) => {
-          if (value !== undefined && value !== null && value !== '') {
-            url.searchParams.append(key, String(value));
-          }
-        });
+    queryKey: [
+      'supabase:tee_time_listings:select',
+      {
+        columns: `
+          *,
+          clubs (
+            id,
+            name,
+            location,
+            image_url
+          ),
+          host:host_id (
+            id,
+            first_name,
+            last_name,
+            username,
+            profile_image_url
+          )
+        `,
+        filters,
+        order: { column: 'date', ascending: true }
       }
-      
-      const response = await fetch(url.toString());
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch tee time listings');
-      }
-      
-      return response.json();
-    },
+    ],
+    enabled: true,
   });
 }
 
@@ -208,16 +231,112 @@ export function useCreateTeeTime() {
   });
 }
 
-// Book a tee time
+// Update an existing tee time listing using Supabase
+export function useUpdateTeeTime() {
+  return useMutation({
+    mutationFn: async (data: UpdateTeeTimeData) => {
+      // Import supabase client
+      const { supabase } = await import('@/lib/supabaseClient');
+      
+      // Prepare update data for Supabase (only include fields that are being updated)
+      const updateData: any = {};
+      
+      if (data.clubId !== undefined) updateData.club_id = data.clubId;
+      if (data.date !== undefined) {
+        updateData.date = typeof data.date === 'object' && data.date instanceof Date ? data.date.toISOString() : data.date;
+      }
+      if (data.price !== undefined) updateData.price = data.price;
+      if (data.playersAllowed !== undefined) updateData.players_allowed = data.playersAllowed;
+      if (data.notes !== undefined) updateData.notes = data.notes;
+      if (data.status !== undefined) updateData.status = data.status;
+      
+      // Don't update if no fields are provided
+      if (Object.keys(updateData).length === 0) {
+        throw new Error('No fields to update');
+      }
+      
+      const { data: result, error } = await supabase
+        .from('tee_time_listings')
+        .update(updateData)
+        .eq('id', data.id)
+        .select(`
+          *,
+          clubs (
+            id,
+            name,
+            location,
+            image_url
+          )
+        `)
+        .single();
+      
+      if (error) {
+        throw new Error(error.message);
+      }
+      
+      return result;
+    },
+    onSuccess: (data) => {
+      // Invalidate relevant queries
+      queryClient.invalidateQueries({ queryKey: ['supabase:tee_time_listings:select'] });
+      queryClient.invalidateQueries({ 
+        queryKey: ['supabase:tee_time_listings:select', { eq: { host_id: data.host_id } }] 
+      });
+      queryClient.invalidateQueries({ 
+        queryKey: ['supabase:tee_time_listings:single', { id: data.id }] 
+      });
+    },
+  });
+}
+
+// Create a preliminary booking record in Supabase with payment_pending status
 export function useBookTeeTime() {
   return useMutation({
     mutationFn: async (data: BookTeeTimeData) => {
-      const response = await apiRequest('POST', '/api/bookings', data);
-      return response.json();
+      // Import supabase client
+      const { supabase } = await import('@/lib/supabaseClient');
+      
+      // Step 1: Create booking record with payment_pending status
+      const bookingData = {
+        tee_time_id: data.teeTimeId,
+        guest_id: data.guestId,
+        number_of_players: data.numberOfPlayers,
+        total_price: data.totalPrice,
+        status: 'payment_pending',
+      };
+      
+      const { data: booking, error: bookingError } = await supabase
+        .from('bookings')
+        .insert(bookingData)
+        .select()
+        .single();
+      
+      if (bookingError) {
+        throw new Error(bookingError.message);
+      }
+      
+      // Step 2: Update tee time listing status to pending_payment
+      const { error: listingError } = await supabase
+        .from('tee_time_listings')
+        .update({ status: 'pending_payment' })
+        .eq('id', data.teeTimeId);
+      
+      if (listingError) {
+        console.warn('Failed to update tee time listing status:', listingError.message);
+        // Don't throw here as booking creation was successful
+      }
+      
+      return booking;
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['/api/tee-times'] });
-      queryClient.invalidateQueries({ queryKey: [`/api/users/${data.guestId}/bookings`] });
+      // Invalidate relevant Supabase queries
+      queryClient.invalidateQueries({ queryKey: ['supabase:tee_time_listings:select'] });
+      queryClient.invalidateQueries({ 
+        queryKey: ['supabase:tee_time_listings:single', { id: data.tee_time_id }] 
+      });
+      queryClient.invalidateQueries({ 
+        queryKey: ['supabase:bookings:select'] 
+      });
     },
   });
 }

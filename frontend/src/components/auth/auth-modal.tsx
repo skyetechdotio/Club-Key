@@ -6,7 +6,7 @@ import PasswordResetForm from "./password-reset-form";
 
 interface AuthModalProps {
   isOpen: boolean;
-  onClose: () => void;
+  onClose: (result?: { emailVerificationPending?: boolean; email?: string }) => void;
   view: "login" | "register" | "reset-password";
   setView: (view: "login" | "register" | "reset-password") => void;
 }
@@ -22,26 +22,33 @@ export default function AuthModal({ isOpen, onClose, view, setView }: AuthModalP
     }
   };
 
+  // Handle dialog close (without result)
+  const handleDialogClose = (open: boolean) => {
+    if (!open) {
+      onClose();
+    }
+  };
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={handleDialogClose}>
       <DialogContent className="sm:max-w-md" aria-describedby="auth-description">
         <DialogTitle className="sr-only">{getTitle()}</DialogTitle>
         <span id="auth-description" className="sr-only">Please enter your credentials to continue.</span>
         
         {view === "login" ? (
           <LoginForm 
-            onSuccess={onClose} 
+            onSuccess={() => onClose()} 
             switchToRegister={() => setView("register")} 
             switchToResetPassword={() => setView("reset-password")}
           />
         ) : view === "register" ? (
           <RegisterForm 
-            onSuccess={onClose} 
+            onSuccess={(result) => onClose(result)} 
             switchToLogin={() => setView("login")} 
           />
         ) : (
           <PasswordResetForm 
-            onSuccess={onClose}
+            onSuccess={() => onClose()}
             switchToLogin={() => setView("login")} 
           />
         )}

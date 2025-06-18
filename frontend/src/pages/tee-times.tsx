@@ -1,23 +1,40 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { useTeeTimeListings } from "@/hooks/use-tee-times";
+import { useTeeTimeListings, TeeTimeSearchFilters } from "@/hooks/use-tee-times";
 import { SearchFilters, SearchFilters as SearchFiltersType } from "@/components/listings/search-filters";
 import TeeTimeCard from "@/components/listings/tee-time-card";
 import SearchFiltersComponent from "@/components/listings/search-filters";
 import { parseQueryParams } from "@/lib/utils";
 import { Helmet } from 'react-helmet';
 import { Button } from "@/components/ui/button";
-import { MapPin, Filter, CalendarRange } from "lucide-react";
+import { MapPin, Filter, CalendarRange, Loader2, AlertCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { TeeTimeListing } from "@shared/schema";
 import { format } from "date-fns";
 
-interface ExtendedTeeTimeListing extends TeeTimeListing {
-  club?: any;
-  host?: any;
-  relevanceScore?: number;
-  hostRating?: number;
-  reviewCount?: number;
+// Interface for Supabase tee time listing with joins
+interface SupabaseTeeTimeListing {
+  id: number; // serial primary key from schema
+  host_id: string; // UUID from profiles table
+  club_id: number; // serial primary key from clubs table
+  date: string;
+  price: number;
+  players_allowed: number;
+  notes?: string;
+  status: string;
+  created_at: string;
+  clubs?: {
+    id: number;
+    name: string;
+    location: string;
+    image_url?: string;
+  };
+  host?: {
+    id: string;
+    first_name?: string;
+    last_name?: string;
+    username: string;
+    profile_image_url?: string;
+  };
 }
 
 export default function TeeTimesPage() {
@@ -70,8 +87,17 @@ export default function TeeTimesPage() {
     handleSearch(newFilters);
   };
 
-  // Fetch tee time listings with filters
-  const { data: teeTimeListings, isLoading, error } = useTeeTimeListings(filters);
+  // Convert SearchFilters to TeeTimeSearchFilters for Supabase
+  const searchFilters: TeeTimeSearchFilters = {
+    location: filters.location,
+    date: filters.date,
+    endDate: filters.endDate,
+    players: filters.players,
+    distance: filters.distance,
+  };
+
+  // Fetch tee time listings with filters from Supabase
+  const { data: teeTimeListings, isLoading, error } = useTeeTimeListings(searchFilters);
 
   // Update URL when filters change
   const handleSearch = (newFilters: SearchFilters) => {
@@ -105,12 +131,13 @@ export default function TeeTimesPage() {
   const toggleFavorite = (id: number) => {
     // This would normally update a user's favorites in the backend
     console.log(`Toggled favorite for tee time ${id}`);
+    // TODO: Implement favorites functionality with Supabase
   };
 
   return (
     <>
       <Helmet>
-        <title>Browse Golf Tee Times | Linx</title>
+        <title>Browse Golf Tee Times | ClubKey</title>
         <meta name="description" content="Search for available tee times at exclusive golf clubs. Connect with member hosts and play at prestigious courses typically reserved for members only." />
       </Helmet>
       <div className="container mx-auto px-4 py-8">
@@ -180,17 +207,22 @@ export default function TeeTimesPage() {
 
         {/* Loading, Error, and Results States */}
         {isLoading ? (
-          <div className="flex items-center justify-center min-h-[400px]">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+          <div className="flex flex-col items-center justify-center min-h-[400px]">
+            <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+            <p className="text-neutral-medium">Searching for tee times...</p>
           </div>
         ) : error ? (
           <div className="text-center py-12 bg-red-50 rounded-lg border border-red-100 p-6">
+            <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
             <h2 className="text-xl font-medium text-neutral-dark mb-2">
               Error Loading Tee Times
             </h2>
-            <p className="text-neutral-medium">
-              There was a problem loading the tee times. Please try again later.
+            <p className="text-neutral-medium mb-4">
+              {error?.message || "There was a problem loading the tee times. Please try again later."}
             </p>
+            <Button onClick={() => window.location.reload()}>
+              Try Again
+            </Button>
           </div>
         ) : teeTimeListings?.length > 0 ? (
           <>
@@ -209,20 +241,20 @@ export default function TeeTimesPage() {
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {teeTimeListings.map((teeTime: ExtendedTeeTimeListing) => (
+              {teeTimeListings.map((teeTime: SupabaseTeeTimeListing) => (
                 <TeeTimeCard
                   key={teeTime.id}
-                  id={teeTime.id}
-                  clubName={teeTime.club?.name || "Unknown Club"}
-                  clubLocation={teeTime.club?.location || "Unknown Location"}
-                  clubImageUrl={teeTime.club?.imageUrl || ""}
-                  hostName={teeTime.host?.firstName || teeTime.host?.username || "Unknown Host"}
-                  hostImageUrl={teeTime.host?.profileImage}
-                  hostInitials={(teeTime.host?.firstName?.[0] || "") + (teeTime.host?.lastName?.[0] || "")}
-                  date={teeTime.date instanceof Date ? format(teeTime.date, 'yyyy-MM-dd HH:mm:ss') : String(teeTime.date)}
+                  id={teeTime.id} // Now correctly typed as number
+                  clubName={teeTime.clubs?.name || "Unknown Club"}
+                  clubLocation={teeTime.clubs?.location || "Unknown Location"}
+                  clubImageUrl={teeTime.clubs?.image_url || ""}
+                  hostName={teeTime.host?.first_name || teeTime.host?.username || "Unknown Host"}
+                  hostImageUrl={teeTime.host?.profile_image_url}
+                  hostInitials={(teeTime.host?.first_name?.[0] || "") + (teeTime.host?.last_name?.[0] || "")}
+                  date={teeTime.date}
                   price={teeTime.price}
-                  rating={teeTime.hostRating || 0}
-                  reviewCount={teeTime.reviewCount || 0}
+                  rating={0} // TODO: Add rating calculation from reviews
+                  reviewCount={0} // TODO: Add review count from reviews
                   onFavoriteToggle={toggleFavorite}
                 />
               ))}

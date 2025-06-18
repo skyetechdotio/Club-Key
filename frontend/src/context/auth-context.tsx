@@ -31,7 +31,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (data: RegisterData) => Promise<any>;
+  register: (data: RegisterData) => Promise<{ user: any; emailVerificationPending: boolean; email: string }>;
   logout: () => Promise<void>;
   openAuthModal: (view?: "login" | "register" | "reset-password") => void;
   refreshUserData: () => Promise<any>;
@@ -44,7 +44,7 @@ export const AuthContext = createContext<AuthContextType>({
   isAuthenticated: false,
   isLoading: true,
   login: async () => {},
-  register: async () => {},
+  register: async () => ({ user: null, emailVerificationPending: false, email: "" }),
   logout: async () => {},
   openAuthModal: () => {},
   refreshUserData: async () => {},
@@ -181,15 +181,32 @@ export function AuthProvider({ children, openAuthModal }: AuthProviderProps) {
       if (authData.user) {
         console.log("Registration successful");
         
-        // The user might not be immediately confirmed depending on email settings
+        // Check if email verification is pending (session is null) or user is immediately signed in
         if (authData.session) {
+          // User is immediately signed in
           const mergedUser = await mergeUserWithProfile(authData.user);
           setUser(mergedUser);
-          return mergedUser;
+          return { 
+            user: mergedUser, 
+            emailVerificationPending: false, 
+            email: data.email 
+          };
+        } else {
+          // Email verification is pending
+          return { 
+            user: authData.user, 
+            emailVerificationPending: true, 
+            email: data.email 
+          };
         }
-        
-        return authData.user;
       }
+      
+      // Fallback return (shouldn't reach here)
+      return { 
+        user: null, 
+        emailVerificationPending: true, 
+        email: data.email 
+      };
     } catch (error: any) {
       console.error("Registration failed:", error);
       toast({
