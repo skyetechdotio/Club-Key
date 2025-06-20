@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuthStore } from "@/stores/authStore";
 import { 
   DropdownMenu,
   DropdownMenuContent,
@@ -17,7 +17,7 @@ import golfBallLogo from "@/assets/new-logo.svg";
 
 export default function Navbar() {
   const [location] = useLocation();
-  const { user, logout, openAuthModal, isAuthenticated, refreshUserData } = useAuth();
+  const { user, logout, openAuthModal, isAuthenticated, refreshUserData } = useAuthStore();
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [userAvatar, setUserAvatar] = useState<string | undefined>(user?.profileImage);
   
@@ -39,6 +39,7 @@ export default function Navbar() {
   const handleHostYourClubClick = (e: React.MouseEvent) => {
     if (!isAuthenticated) {
       e.preventDefault();
+      console.log('🔍 [Navbar] handleHostYourClubClick - calling openAuthModal("register")');
       openAuthModal("register");
       return false;
     }
@@ -133,14 +134,20 @@ export default function Navbar() {
             ) : (
               <div className="flex items-center space-x-3">
                 <Button 
-                  onClick={() => openAuthModal("login")} 
+                  onClick={() => {
+                    console.log('🔍 [Navbar] Login button clicked');
+                    openAuthModal("login");
+                  }} 
                   variant="ghost" 
                   className="text-neutral-dark hover:text-primary transition-all"
                 >
                   Log in
                 </Button>
                 <Button 
-                  onClick={() => openAuthModal("register")} 
+                  onClick={() => {
+                    console.log('🔍 [Navbar] Signup button clicked');
+                    openAuthModal("register");
+                  }} 
                   variant="default" 
                   className="bg-primary hover:bg-primary/90 text-white font-medium rounded-full px-6"
                 >

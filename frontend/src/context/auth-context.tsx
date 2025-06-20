@@ -146,8 +146,10 @@ export function AuthProvider({ children, openAuthModal }: AuthProviderProps) {
         queryClient.invalidateQueries({ queryKey: [`supabase:hosts:select`] });
         queryClient.invalidateQueries({ queryKey: [`supabase:clubs:select`] });
         
-        console.log("User data refreshed successfully", mergedUser);
-        console.log("🔍 [refreshUserData] About to return mergedUser with onboardingCompleted:", mergedUser.onboardingCompleted);
+        console.log("🔍 [refreshUserData] FIXED VERSION - User data refreshed successfully", mergedUser);
+        console.log("🔍 [refreshUserData] FIXED VERSION - About to return mergedUser with onboardingCompleted:", mergedUser.onboardingCompleted);
+        console.log("🔍 [refreshUserData] FIXED VERSION - mergedUser type:", typeof mergedUser);
+        console.log("🔍 [refreshUserData] FIXED VERSION - mergedUser keys:", Object.keys(mergedUser));
         return mergedUser;
       }
       

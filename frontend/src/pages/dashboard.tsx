@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuthStore } from "@/stores/authStore";
 import { useUserBookings, useHostBookings, useUpdateTeeTime } from "@/hooks/use-tee-times";
 import { useHostTeeTimeListingsSupabase } from "@/hooks/use-profile";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -40,7 +40,7 @@ interface TeeTimeListing {
 
 export default function DashboardPage() {
   const [, navigate] = useLocation();
-  const { user, isAuthenticated, openAuthModal } = useAuth();
+  const { user, isAuthenticated, openAuthModal } = useAuthStore();
   const { toast } = useToast();
   const [selectedBooking, setSelectedBooking] = useState<any>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -48,6 +48,9 @@ export default function DashboardPage() {
   const { mutate: updateBookingStatus, isPending: isUpdatingStatus } = useUpdateBookingStatus();
   const { mutate: createPaymentIntent, isPending: isCreatingPayment } = useCreatePaymentIntent();
   const { mutate: updateTeeTime, isPending: isCancellingListing } = useUpdateTeeTime();
+
+  console.log('🔍 [Dashboard] Rendering with user:', user);
+  console.log('🔍 [Dashboard] User isHost:', user?.isHost);
 
   // Redirect to login if not authenticated
   if (!isAuthenticated) {
@@ -67,6 +70,15 @@ export default function DashboardPage() {
     isLoading: isLoadingTeeTimeListings, 
     error: teeTimeListingsError 
   } = useHostTeeTimeListingsSupabase(user?.id, !!user?.isHost);
+
+  console.log('🔍 [Dashboard] Data loading states:', {
+    isLoadingBookings,
+    isLoadingHostBookings,
+    isLoadingTeeTimeListings,
+    myBookings,
+    hostBookings,
+    hostTeeTimeListings
+  });
 
   const handleUpdateBookingStatus = (booking: any, status: string) => {
     updateBookingStatus(

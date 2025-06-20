@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuthStore } from "@/stores/authStore";
 import { Loader2 } from "lucide-react";
 
 // Simplified schema for email-only password reset request
@@ -22,7 +22,7 @@ interface PasswordResetFormProps {
 }
 
 export default function PasswordResetForm({ switchToLogin, onSuccess }: PasswordResetFormProps) {
-  const { requestPasswordReset, isLoading: authLoading } = useAuth();
+  const { requestPasswordReset, isLoading: authLoading } = useAuthStore();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
   const { toast } = useToast();

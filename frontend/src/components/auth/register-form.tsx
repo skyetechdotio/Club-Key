@@ -13,7 +13,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuthStore } from "@/stores/authStore";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -42,7 +42,7 @@ interface RegisterFormProps {
 }
 
 export default function RegisterForm({ onSuccess, switchToLogin }: RegisterFormProps) {
-  const { register, isLoading: authLoading } = useAuth();
+  const { register, isLoading: authLoading } = useAuthStore();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);

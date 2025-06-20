@@ -5,8 +5,8 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/context/auth-context";
-import { AuthProvider } from "@/context/auth-context";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuthStore, initializeAuth, setGlobalToast } from "@/stores/authStore";
+import { useToast } from "@/hooks/use-toast";
 import { ChatProvider } from "@/context/chat-context";
 import ScrollRestoration from "@/components/scroll-restoration";
 import Navbar from "@/layouts/Navbar";
@@ -39,20 +39,66 @@ import CheckEmailModal from "@/components/auth/CheckEmailModal";
 import SanityCheckComponent from "@/components/_dev_examples/SanityCheckComponent";
 import { Loader2 } from "lucide-react";
 
-// Removed ProtectedRoute and HostOnlyRoute components - logic moved to Router
+// Protected Route component using Zustand store
+function ProtectedRoute({ component: Component, ...rest }: { component: React.ComponentType, path: string }) {
+  const { user, isLoading, isAuthenticated } = useAuthStore();
+  const [matches] = useRoute(rest.path);
+
+  // Debug information
+  console.log("🔍 [ProtectedRoute] Zustand store check:", {
+    path: rest.path,
+    matches,
+    isLoading,
+    isAuthenticated,
+    onboardingCompleted: user?.onboardingCompleted
+  });
+
+  if (isLoading) {
+    return matches ? (
+      <div className="flex h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    ) : null;
+  }
+
+  if (!isAuthenticated && matches) {
+    console.log("🔍 [ProtectedRoute] User not authenticated, redirecting to home");
+    return <Redirect to="/" />;
+  }
+
+  // Check if user needs to complete onboarding
+  if (user && !user.onboardingCompleted && matches && rest.path !== "/onboarding" && rest.path !== "/update-password") {
+    console.log(`🔍 [ProtectedRoute] User needs onboarding. Current path: ${rest.path}. Redirecting to /onboarding.`);
+    return <Redirect to="/onboarding" />;
+  }
+
+  return <Component />;
+}
+
+// Host Only Route component using Zustand store
+function HostOnlyRoute({ component: Component, ...rest }: { component: React.ComponentType, path: string }) {
+  const { user, isLoading, isAuthenticated } = useAuthStore();
+  const [matches] = useRoute(rest.path);
+
+  if (isLoading) {
+    return matches ? (
+      <div className="flex h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    ) : null;
+  }
+
+  if ((!isAuthenticated || !user?.isHost) && matches) {
+    return <Redirect to="/" />;
+  }
+
+  return <Component />;
+}
 
 function Router({ openAuthModal }: { openAuthModal: (view: "login" | "register" | "reset-password") => void }) {
   const [location, navigate] = useLocation();
   const isHomePage = location === "/";
-  const { user, isLoading, isAuthenticated } = useAuth();
-
-  // Debug: Log when Router re-renders with user state changes
-  console.log("🔄 [Router] Rendering with state:", {
-    location,
-    isAuthenticated,
-    onboardingCompleted: user?.onboardingCompleted,
-    isLoading
-  });
+  const { user, isLoading, isAuthenticated } = useAuthStore();
 
   // Determine if navbar and footer should be shown
   const hideNavbar = location === "/onboarding" || location === "/update-password";
@@ -105,17 +151,7 @@ function Router({ openAuthModal }: { openAuthModal: (view: "login" | "register" 
       {!hideNavbar && <Navbar />}
       <main className={`flex-grow ${hideNavbar || isHomePage ? 'pt-0' : 'pt-4'}`}>
         <Switch>
-          {/* Public routes */}
           <Route path="/" component={Home} />
-          <Route path="/tee-times" component={TeeTimesPage} />
-          <Route path="/tee-times/:id" component={TeeTimeDetailsPage} />
-          <Route path="/about" component={AboutPage} />
-          <Route path="/press" component={PressPage} />
-          <Route path="/privacy-policy" component={PrivacyPolicyPage} />
-          <Route path="/terms-of-service" component={TermsOfServicePage} />
-          <Route path="/cookie-policy" component={CookiePolicyPage} />
-          <Route path="/contact" component={ContactPage} />
-          <Route path="/help" component={HelpPage} />
           
           {/* Password Reset Page - No auth required, handles its own session validation */}
           <Route path="/update-password" component={UpdatePasswordPage} />
@@ -123,122 +159,60 @@ function Router({ openAuthModal }: { openAuthModal: (view: "login" | "register" 
           {/* Sanity Check Route for Testing TanStack Query + Supabase Integration */}
           <Route path="/sanity-check" component={SanityCheckComponent} />
           
-          {/* Profile view route - special case with parameter validation */}
+          <Route path="/tee-times" component={TeeTimesPage} />
+          <Route path="/tee-times/:id" component={TeeTimeDetailsPage} />
           <Route path="/profile/:id">
             {params => {
               const id = parseInt(params.id);
-              if (isNaN(id)) return <Redirect to="/" />;
-              
-              if (!isAuthenticated) {
-                return <Redirect to="/" />;
-              }
-              
-              if (!user?.onboardingCompleted) {
-                return <Redirect to="/onboarding" />;
-              }
-              
-              return <ProfilePage />;
+              return !isNaN(id) ? <ProfilePage /> : <Redirect to="/" />;
             }}
           </Route>
           
-          {/* Onboarding Route */}
-          <Route path="/onboarding">
-            {isAuthenticated ? <ProfileOnboarding /> : <Redirect to="/" />}
+          {/* Onboarding routes */}
+          <Route path="/onboarding" component={ProfileOnboarding} />
+          <Route path="/profile-onboarding">
+            <ProtectedRoute path="/profile-onboarding" component={ProfileOnboarding} />
           </Route>
           
-          {/* Authenticated-Only Routes */}
-          <Route path="/dashboard">
-            {!isAuthenticated ? (
-              <Redirect to="/" />
-            ) : !user?.onboardingCompleted ? (
-              <Redirect to="/onboarding" />
-            ) : (
-              <Dashboard />
-            )}
-          </Route>
-          
+          {/* Protected routes */}
           <Route path="/profile-edit">
-            {!isAuthenticated ? (
-              <Redirect to="/" />
-            ) : !user?.onboardingCompleted ? (
-              <Redirect to="/onboarding" />
-            ) : (
-              <BasicProfileEdit />
-            )}
+            <ProtectedRoute path="/profile-edit" component={BasicProfileEdit} />
           </Route>
-          
+          <Route path="/dashboard">
+            <ProtectedRoute path="/dashboard" component={Dashboard} />
+          </Route>
           <Route path="/pre-checkout/:teeTimeId">
-            {!isAuthenticated ? (
-              <Redirect to="/" />
-            ) : !user?.onboardingCompleted ? (
-              <Redirect to="/onboarding" />
-            ) : (
-              <PreCheckoutPage />
-            )}
+            <ProtectedRoute path="/pre-checkout/:teeTimeId" component={PreCheckoutPage} />
           </Route>
-          
           <Route path="/checkout/:bookingId">
-            {!isAuthenticated ? (
-              <Redirect to="/" />
-            ) : !user?.onboardingCompleted ? (
-              <Redirect to="/onboarding" />
-            ) : (
-              <CheckoutPage />
-            )}
+            <ProtectedRoute path="/checkout/:bookingId" component={CheckoutPage} />
           </Route>
-          
           <Route path="/messages">
-            {!isAuthenticated ? (
-              <Redirect to="/" />
-            ) : !user?.onboardingCompleted ? (
-              <Redirect to="/onboarding" />
-            ) : (
-              <MessagesPage />
-            )}
+            <ProtectedRoute path="/messages" component={MessagesPage} />
           </Route>
-          
           <Route path="/messages/:userId">
-            {!isAuthenticated ? (
-              <Redirect to="/" />
-            ) : !user?.onboardingCompleted ? (
-              <Redirect to="/onboarding" />
-            ) : (
-              <MessagesPage />
-            )}
+            <ProtectedRoute path="/messages/:userId" component={MessagesPage} />
           </Route>
-          
           <Route path="/notifications">
-            {!isAuthenticated ? (
-              <Redirect to="/" />
-            ) : !user?.onboardingCompleted ? (
-              <Redirect to="/onboarding" />
-            ) : (
-              <NotificationsPage />
-            )}
+            <ProtectedRoute path="/notifications" component={NotificationsPage} />
           </Route>
           
           {/* Host-only routes */}
           <Route path="/create-listing">
-            {!isAuthenticated || !user?.isHost ? (
-              <Redirect to="/dashboard" />
-            ) : !user?.onboardingCompleted ? (
-              <Redirect to="/onboarding" />
-            ) : (
-              <CreateListing />
-            )}
+            <HostOnlyRoute path="/create-listing" component={CreateListing} />
           </Route>
-          
           <Route path="/edit-listing/:listingId">
-            {!isAuthenticated || !user?.isHost ? (
-              <Redirect to="/dashboard" />
-            ) : !user?.onboardingCompleted ? (
-              <Redirect to="/onboarding" />
-            ) : (
-              <EditListingPage />
-            )}
+            <HostOnlyRoute path="/edit-listing/:listingId" component={EditListingPage} />
           </Route>
           
-          {/* 404 Route */}
+          {/* Standard pages */}
+          <Route path="/about" component={AboutPage} />
+          <Route path="/press" component={PressPage} />
+          <Route path="/privacy-policy" component={PrivacyPolicyPage} />
+          <Route path="/terms-of-service" component={TermsOfServicePage} />
+          <Route path="/cookie-policy" component={CookiePolicyPage} />
+          <Route path="/contact" component={ContactPage} />
+          <Route path="/help" component={HelpPage} />
           <Route component={NotFound} />
         </Switch>
       </main>
@@ -248,19 +222,22 @@ function Router({ openAuthModal }: { openAuthModal: (view: "login" | "register" 
 }
 
 function App() {
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [authModalView, setAuthModalView] = useState<"login" | "register" | "reset-password">("login");
   const [showCheckEmailModal, setShowCheckEmailModal] = useState(false);
   const [emailForVerification, setEmailForVerification] = useState<string | null>(null);
+  const { toast } = useToast();
+  
+  // Get modal state and actions from Zustand store
+  const { isAuthModalOpen, authModalView, openAuthModal, closeAuthModal: closeModal, setAuthModalView } = useAuthStore();
 
-  // Open auth modal function to be passed to context and Router
-  const openAuthModal = (view: "login" | "register" | "reset-password" = "login") => {
-    setAuthModalView(view);
-    setIsAuthModalOpen(true);
-  };
+  // Initialize auth store and global toast once on app startup
+  useEffect(() => {
+    console.log('🔍 [App] Initializing auth store...');
+    setGlobalToast(toast);
+    initializeAuth();
+  }, [toast]);
 
   const closeAuthModal = (result?: { emailVerificationPending?: boolean; email?: string }) => {
-    setIsAuthModalOpen(false); // Close the main AuthModal
+    closeModal(); // Close the main AuthModal using Zustand action
     if (result?.emailVerificationPending && result.email) {
       setEmailForVerification(result.email);
       setShowCheckEmailModal(true); // Trigger the new "Check Email" modal
@@ -270,26 +247,24 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider attribute="class" defaultTheme="light">
-        <AuthProvider openAuthModal={openAuthModal}>
-          <ChatProvider>
-            <TooltipProvider>
-              <ScrollRestoration />
-              <Toaster />
-              <Router openAuthModal={openAuthModal} />
-              <AuthModal 
-                isOpen={isAuthModalOpen} 
-                onClose={closeAuthModal} 
-                view={authModalView}
-                setView={setAuthModalView}
-              />
-              <CheckEmailModal
-                isOpen={showCheckEmailModal}
-                onClose={() => setShowCheckEmailModal(false)}
-                email={emailForVerification}
-              />
-            </TooltipProvider>
-          </ChatProvider>
-        </AuthProvider>
+        <ChatProvider>
+          <TooltipProvider>
+            <ScrollRestoration />
+            <Toaster />
+            <Router openAuthModal={openAuthModal} />
+            <AuthModal 
+              isOpen={isAuthModalOpen} 
+              onClose={closeAuthModal} 
+              view={authModalView}
+              setView={setAuthModalView}
+            />
+            <CheckEmailModal
+              isOpen={showCheckEmailModal}
+              onClose={() => setShowCheckEmailModal(false)}
+              email={emailForVerification}
+            />
+          </TooltipProvider>
+        </ChatProvider>
       </ThemeProvider>
     </QueryClientProvider>
   );

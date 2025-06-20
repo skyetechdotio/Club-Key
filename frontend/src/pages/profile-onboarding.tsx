@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { supabase } from "@/lib/supabaseClient";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuthStore } from "@/stores/authStore";
 import { useClubs, type Club } from "@/hooks/use-profile";
 import { Loader2, Camera, Plus, MapPin, Building, ArrowRight, CheckCircle } from "lucide-react";
 import { Helmet } from 'react-helmet';
@@ -47,7 +47,7 @@ interface NewClubData {
 export default function ProfileOnboarding() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
-  const { user, isAuthenticated, refreshUserData, updateUser } = useAuth();
+  const { user, isAuthenticated, refreshUserData } = useAuthStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Current step state
@@ -376,38 +376,18 @@ export default function ProfileOnboarding() {
         description: "Your onboarding is complete. Let's get started!",
       });
 
-      console.log('🟢 M5: [completeOnboardingMutation.onSuccess] Refreshing user data...');
-      // CRITICAL CHANGE: Capture the returned fresh user object
+      console.log('🟢 M5: [completeOnboardingMutation.onSuccess] Refreshing user data with Zustand store...');
+      
+      // Refresh user data - this will automatically update the Zustand store
       const refreshedUser = await refreshUserData();
-      console.log('🟢 M5: [completeOnboardingMutation.onSuccess] User data refreshed, returned user:', refreshedUser);
-      console.log('🟢 M5: [completeOnboardingMutation.onSuccess] Returned user type:', typeof refreshedUser);
-      console.log('🟢 M5: [completeOnboardingMutation.onSuccess] Returned user onboardingCompleted:', refreshedUser?.onboardingCompleted);
+      console.log('🟢 M5: [completeOnboardingMutation.onSuccess] Zustand store refreshed, user:', refreshedUser);
       
-      // FORCE FIX: Since refreshUserData seems to return wrong object, let's construct the correct one from database data
-      const correctedUser = {
-        ...user, // Keep existing user structure
-        onboardingCompleted: data.onboarding_completed === true, // Use the database response directly
-        bio: data.bio,
-        profileImage: data.profile_image_url,
-        username: data.username,
-        firstName: data.first_name,
-        lastName: data.last_name,
-      };
-      
-      console.log('🔄 M5: [completeOnboardingMutation.onSuccess] Constructed corrected user:', correctedUser);
-      console.log('🔄 M5: [completeOnboardingMutation.onSuccess] Corrected user onboardingCompleted:', correctedUser.onboardingCompleted);
-      
-      // Force update the auth context with corrected user
-      updateUser(correctedUser);
-      console.log('🔄 M5: [completeOnboardingMutation.onSuccess] Auth context manually updated');
-      
-      // Double check - use the corrected user for navigation decision
-      if (correctedUser.onboardingCompleted) {
-        console.log('🟢 M6: [completeOnboardingMutation.onSuccess] Onboarding confirmed from corrected data. Navigating to dashboard...');
+      if (refreshedUser?.onboardingCompleted) {
+        console.log('🟢 M6: [completeOnboardingMutation.onSuccess] Zustand store confirms onboarding complete. Navigating to dashboard...');
         navigate("/dashboard", { replace: true });
       } else {
-        console.error('🔴 M6: [completeOnboardingMutation.onSuccess] Onboarding completion failed even in corrected data. Halting redirect.');
-        console.error('🔴 M6: [completeOnboardingMutation.onSuccess] Database response onboarding_completed:', data.onboarding_completed);
+        console.error('🔴 M6: [completeOnboardingMutation.onSuccess] Zustand store shows onboarding not complete:', refreshedUser?.onboardingCompleted);
+        console.error('🔴 M6: [completeOnboardingMutation.onSuccess] Database response:', data.onboarding_completed);
         toast({
           title: "Update Error",
           description: "Could not confirm profile completion. Please try refreshing the page.",

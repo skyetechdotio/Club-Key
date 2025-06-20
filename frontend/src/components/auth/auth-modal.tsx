@@ -12,6 +12,8 @@ interface AuthModalProps {
 }
 
 export default function AuthModal({ isOpen, onClose, view, setView }: AuthModalProps) {
+  console.log('🔍 [AuthModal] Rendered with:', { isOpen, view });
+  
   // Determine the appropriate title based on the current view
   const getTitle = () => {
     switch(view) {

@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuthStore } from "@/stores/authStore";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 
 const loginSchema = z.object({
@@ -32,7 +32,7 @@ interface LoginFormProps {
 }
 
 export default function LoginForm({ onSuccess, switchToRegister, switchToResetPassword }: LoginFormProps) {
-  const { login, isLoading: authLoading } = useAuth();
+  const { login, isLoading: authLoading } = useAuthStore();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
