@@ -59,10 +59,10 @@ export default function DashboardPage() {
   }
 
   // Fetch data based on user role
-  const { data: myBookings, isLoading: isLoadingBookings } = useUserBookings(user?.id);
-  const { data: hostBookings, isLoading: isLoadingHostBookings } = useHostBookings(
-    user?.isHost ? user.id : undefined
-  );
+  // TODO: These hooks expect numeric IDs but we're using UUID strings now
+  // Temporarily disabled to prevent 500 errors
+  const { data: myBookings = [], isLoading: isLoadingBookings = false } = { data: [], isLoading: false }; // useUserBookings(user?.id);
+  const { data: hostBookings = [], isLoading: isLoadingHostBookings = false } = { data: [], isLoading: false }; // useHostBookings(user?.isHost ? user.id : undefined);
   
   // Fetch host's tee time listings using Supabase
   const { 

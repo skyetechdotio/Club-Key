@@ -126,7 +126,10 @@ async function handleSupabaseQuery(
           
           // Location filter - search in club names and locations
           if (filters.location && filters.location.trim()) {
-            query = query.or(`clubs.name.ilike.%${filters.location}%,clubs.location.ilike.%${filters.location}%`);
+            // For now, just search in club names to avoid OR syntax issues
+            const searchTerm = filters.location.trim();
+            query = query.ilike('clubs.name', `%${searchTerm}%`);
+            // TODO: Implement proper club search with dropdown autocomplete
           }
           
           // Date range filters

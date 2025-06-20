@@ -80,6 +80,14 @@ function HostOnlyRoute({ component: Component, ...rest }: { component: React.Com
   const { user, isLoading, isAuthenticated } = useAuthStore();
   const [matches] = useRoute(rest.path);
 
+  console.log('🔍 [HostOnlyRoute] Check:', {
+    path: rest.path,
+    matches,
+    isLoading,
+    isAuthenticated,
+    user: user ? { id: user.id, isHost: user.isHost } : null
+  });
+
   if (isLoading) {
     return matches ? (
       <div className="flex h-screen items-center justify-center">
@@ -89,6 +97,7 @@ function HostOnlyRoute({ component: Component, ...rest }: { component: React.Com
   }
 
   if ((!isAuthenticated || !user?.isHost) && matches) {
+    console.log('🔍 [HostOnlyRoute] Redirecting to home - user not host or not authenticated');
     return <Redirect to="/" />;
   }
 

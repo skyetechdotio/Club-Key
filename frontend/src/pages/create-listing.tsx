@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useQuery } from "@tanstack/react-query";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuthStore } from "@/stores/authStore";
 import { useCreateTeeTime } from "@/hooks/use-tee-times";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -91,7 +91,7 @@ interface UserClub {
 
 export default function CreateListingPage() {
   const [, navigate] = useLocation();
-  const { user, isAuthenticated, openAuthModal } = useAuth();
+  const { user, isAuthenticated, openAuthModal } = useAuthStore();
   const { toast } = useToast();
   const { mutate: createTeeTime, isPending: isCreating } = useCreateTeeTime();
 

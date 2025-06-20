@@ -5,11 +5,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { useTeeTimeListings, type TeeTimeListing } from "@/hooks/use-tee-times";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuthStore } from "@/stores/authStore";
 import { Heart, Star } from "lucide-react";
 
 export default function FeaturedTeeTimesSection() {
-  const { isAuthenticated, openAuthModal } = useAuth();
+  const { isAuthenticated, openAuthModal } = useAuthStore();
   const { toast } = useToast();
   const { data: teeTimeListings, isLoading, error } = useTeeTimeListings();
   const [favoriteTeeTimes, setFavoriteTeeTimes] = useState<number[]>([]);
@@ -19,7 +19,7 @@ export default function FeaturedTeeTimesSection() {
 
   const toggleFavorite = (id: number) => {
     if (!isAuthenticated) {
-      openAuthModal();
+      openAuthModal("login");
       return;
     }
 
@@ -160,8 +160,8 @@ export default function FeaturedTeeTimesSection() {
                   </div>
                   <div className="ml-auto flex items-center text-sm">
                     <Star className="text-yellow-400 mr-1 h-4 w-4" />
-                    <span className="font-medium">{teeTime.hostRating.toFixed(1)}</span>
-                    <span className="text-neutral-medium ml-1">({teeTime.reviewCount})</span>
+                    <span className="font-medium">{teeTime.hostRating ? teeTime.hostRating.toFixed(1) : '0.0'}</span>
+                    <span className="text-neutral-medium ml-1">({teeTime.reviewCount || 0})</span>
                   </div>
                 </div>
                 <h3 className="font-heading font-bold text-lg mb-2">{teeTime.club?.name}</h3>
