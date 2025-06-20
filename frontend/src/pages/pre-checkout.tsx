@@ -97,7 +97,7 @@ export default function PreCheckoutPage() {
       return;
     }
 
-    // Create the booking record
+    // Create the preliminary booking record
     createBooking(bookingInfo, {
       onSuccess: (booking) => {
         toast({
@@ -108,16 +108,8 @@ export default function PreCheckoutPage() {
         // Clear the localStorage
         localStorage.removeItem('pendingBookingInfo');
         
-        // For MVP, navigate to dashboard (payment processing will be in M4)
-        // In M4, this would navigate to /checkout/:bookingId
-        toast({
-          title: "Booking Reserved",
-          description: "Your tee time is reserved! Payment processing will be available in the next release.",
-        });
-        
-        setTimeout(() => {
-          navigate("/dashboard");
-        }, 2000);
+        // Navigate to checkout page with booking ID
+        navigate(`/checkout/${booking.id}`);
       },
       onError: (error) => {
         console.error('Booking creation failed:', error);
@@ -341,7 +333,7 @@ export default function PreCheckoutPage() {
 
                   <div className="pt-2 text-xs text-neutral-medium">
                     <p className="font-medium mb-1">Payment Information</p>
-                    <p>Payment processing will be completed in the next app release. Your tee time will be reserved upon confirmation.</p>
+                    <p>Secure payment processing via Stripe. Your payment will be held in escrow until 24 hours after your tee time is completed.</p>
                   </div>
                 </div>
               </CardContent>

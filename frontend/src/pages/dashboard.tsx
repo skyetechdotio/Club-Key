@@ -18,6 +18,7 @@ import { formatDate, formatTime } from "@/lib/utils";
 import { CalendarDays, CheckCircle, Clock, Edit2, Volleyball, MessageSquare, Star, Users, Loader2, AlertCircle, Building, MapPin } from "lucide-react";
 import { Helmet } from 'react-helmet';
 import HostCalendar from "@/components/dashboard/host-calendar";
+import StripeConnect from "@/components/dashboard/stripe-connect";
 
 // Interface for Supabase tee time listings
 interface TeeTimeListing {
@@ -234,6 +235,10 @@ export default function DashboardPage() {
                 </div>
 
                 <Separator className="my-6" />
+
+                {user?.isHost && (
+                  <StripeConnect />
+                )}
 
                 {!user?.isHost && (
                   <div className="bg-secondary rounded-lg p-4 mb-6">

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/stores/authStore";
-import { useCreatePaymentIntent } from "@/hooks/use-tee-times";
+import { useCreateStripePaymentIntent } from "@/hooks/use-tee-times";
 import { useStripe, useElements, Elements, PaymentElement } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,93 +24,6 @@ const stripePromise = import.meta.env.VITE_STRIPE_PUBLIC_KEY
   ? loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY) 
   : null;
 
-// Hook for manual booking confirmation when regular flow fails
-function useManualBookingConfirmation() {
-  const { toast } = useToast();
-  
-  return async (bookingId: number): Promise<boolean> => {
-    try {
-      console.log(`[MANUAL CONFIRM] Attempting manual confirmation for booking ID: ${bookingId}`);
-      
-      // Add a short delay before confirmation to allow Stripe's systems to process
-      await new Promise(resolve => setTimeout(resolve, 700));
-      
-      // First check if booking exists and its current status
-      try {
-        const bookingCheckResponse = await fetch(`/api/bookings/${bookingId}`, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        });
-        
-        if (bookingCheckResponse.ok) {
-          const bookingData = await bookingCheckResponse.json();
-          
-          // If booking is already confirmed, no need to continue
-          if (bookingData && bookingData.status === 'confirmed') {
-            console.log('[MANUAL CONFIRM] Booking is already confirmed, skipping manual confirmation');
-            return true;
-          }
-          
-          console.log(`[MANUAL CONFIRM] Current booking status: ${bookingData?.status || 'unknown'}`);
-        }
-      } catch (checkError) {
-        console.warn('[MANUAL CONFIRM] Error checking booking status:', checkError);
-        // Continue with confirmation attempt even if check fails
-      }
-      
-      // Proceed with manual confirmation
-      const response = await fetch(`/api/bookings/${bookingId}/confirm-manual`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          timestamp: Date.now(), // Add timestamp for idempotency
-          clientConfirmation: true,
-          clientInfo: {
-            agent: navigator.userAgent,
-            url: window.location.pathname
-          }
-        })
-      });
-      
-      // Handle different response types
-      const responseData = await response.json();
-      
-      if (!response.ok) {
-        console.error('[MANUAL CONFIRM] Server returned error:', responseData);
-        throw new Error(responseData.message || 'Failed to confirm booking');
-      }
-      
-      console.log('[MANUAL CONFIRM] Server response:', responseData);
-      
-      // Check if booking was already confirmed (still a success)
-      if (responseData.status === 'already_confirmed' || responseData.status === 'success' || 
-          (responseData.booking && responseData.booking.status === 'confirmed')) {
-        console.log('[MANUAL CONFIRM] Booking confirmed successfully');
-        return true;
-      }
-      
-      // Check if booking was newly confirmed
-      if (responseData.booking && typeof responseData.booking === 'object') {
-        console.log('[MANUAL CONFIRM] Manual confirmation successful with booking data:', responseData.booking);
-        return true;
-      }
-      
-      // If we reach here, we got an OK response but not a confirmed booking
-      console.warn('[MANUAL CONFIRM] Booking may not be confirmed, ambiguous response:', responseData);
-      return false;
-    } catch (error: any) {
-      console.error('[MANUAL CONFIRM] Manual confirmation failed:', error);
-      
-      // Don't show toasts here - let the caller handle error display
-      // This allows for better retry logic and context-specific messaging
-      return false;
-    }
-  };
-}
 
 function CheckoutForm({ bookingId, onSuccess }: { bookingId: number; onSuccess: () => void }) {
   const stripe = useStripe();
@@ -119,7 +32,6 @@ function CheckoutForm({ bookingId, onSuccess }: { bookingId: number; onSuccess: 
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const { user } = useAuthStore();
-  const manuallyConfirmBooking = useManualBookingConfirmation();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -214,7 +126,7 @@ export default function CheckoutPage() {
   const { user, isAuthenticated, openAuthModal } = useAuthStore();
   const { toast } = useToast();
   const [clientSecret, setClientSecret] = useState<string | null>(null);
-  const { mutate: createPaymentIntent, isPending } = useCreatePaymentIntent();
+  const { mutate: createPaymentIntent, isPending } = useCreateStripePaymentIntent();
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -224,17 +136,41 @@ export default function CheckoutPage() {
     }
   }, [isAuthenticated, openAuthModal, navigate]);
 
-  // Fetch booking details
+  // Fetch booking details using Supabase
   const { data: booking, isLoading, error } = useQuery({
-    queryKey: [`/api/bookings/${bookingId}`],
+    queryKey: [`booking-${bookingId}`],
     queryFn: async () => {
       if (!bookingId) return null;
       
-      const response = await fetch(`/api/bookings/${bookingId}`);
-      if (!response.ok) {
-        throw new Error("Failed to fetch booking details");
+      const { supabase } = await import('@/lib/supabaseClient');
+      const { data, error } = await supabase
+        .from('bookings')
+        .select(`
+          *,
+          tee_time_listings (
+            *,
+            clubs (
+              id,
+              name,
+              location
+            ),
+            host:host_id (
+              id,
+              first_name,
+              last_name,
+              username,
+              stripe_connect_id
+            )
+          )
+        `)
+        .eq('id', bookingId)
+        .single();
+      
+      if (error) {
+        throw new Error(error.message);
       }
-      return response.json();
+      
+      return data;
     },
     enabled: !!bookingId && isAuthenticated,
   });
@@ -242,7 +178,7 @@ export default function CheckoutPage() {
   // Create payment intent when booking data is loaded
   useEffect(() => {
     if (booking && !clientSecret && !isPending) {
-      console.log('Creating payment intent for booking ID:', parseInt(bookingId));
+      console.log('Creating payment intent for booking:', booking);
       
       // If a booking already exists, check its status first
       if (booking.status === 'confirmed') {
@@ -257,10 +193,26 @@ export default function CheckoutPage() {
         return;
       }
       
-      createPaymentIntent(parseInt(bookingId), {
+      // Check if host has Stripe Connect account
+      const teeTimeListing = booking.tee_time_listings;
+      const host = teeTimeListing?.host;
+      
+      if (!host?.stripe_connect_id) {
+        toast({
+          title: "Payment Setup Error",
+          description: "The host has not set up their payment account yet. Please contact them or try again later.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      createPaymentIntent({
+        teeTimeId: booking.tee_time_id,
+        numberOfPlayers: booking.number_of_players,
+      }, {
         onSuccess: (data) => {
           console.log('Payment intent created successfully, client secret received');
-          setClientSecret(data.clientSecret);
+          setClientSecret(data.client_secret);
         },
         onError: (error) => {
           console.error('Payment intent creation failed:', error);
@@ -305,8 +257,8 @@ export default function CheckoutPage() {
     );
   }
 
-  const teeTime = booking.teeTime;
-  const club = booking.club || teeTime?.club;
+  const teeTimeListing = booking.tee_time_listings;
+  const club = teeTimeListing?.clubs;
 
   return (
     <>
@@ -319,7 +271,7 @@ export default function CheckoutPage() {
           <Button 
             variant="ghost" 
             className="pl-0" 
-            onClick={() => navigate(`/tee-times/${teeTime?.id}`)}
+            onClick={() => navigate(`/tee-times/${teeTimeListing?.id}`)}
           >
             <ArrowLeft className="mr-2 h-4 w-4" /> Back to Tee Time
           </Button>
@@ -368,15 +320,15 @@ export default function CheckoutPage() {
                   <div className="space-y-2">
                     <div className="flex items-center">
                       <CalendarDays className="h-4 w-4 text-primary mr-2" />
-                      <span>{formatDate(teeTime?.date)}</span>
+                      <span>{formatDate(teeTimeListing?.date)}</span>
                     </div>
                     <div className="flex items-center">
                       <Clock className="h-4 w-4 text-primary mr-2" />
-                      <span>{formatTime(teeTime?.date)}</span>
+                      <span>{formatTime(teeTimeListing?.date)}</span>
                     </div>
                     <div className="flex items-center">
                       <Users className="h-4 w-4 text-primary mr-2" />
-                      <span>{booking.numberOfPlayers} player{booking.numberOfPlayers > 1 ? 's' : ''}</span>
+                      <span>{booking.number_of_players} player{booking.number_of_players > 1 ? 's' : ''}</span>
                     </div>
                   </div>
 
@@ -384,13 +336,19 @@ export default function CheckoutPage() {
 
                   <div className="space-y-2">
                     <div className="flex justify-between">
-                      <span>${teeTime?.price} × {booking.numberOfPlayers} players</span>
-                      <span>${booking.totalPrice}</span>
+                      <span>${teeTimeListing?.price} × {booking.number_of_players} players</span>
+                      <span>${(teeTimeListing?.price * booking.number_of_players).toFixed(2)}</span>
                     </div>
+                    <div className="flex justify-between">
+                      <span>Guest service fee (5%)</span>
+                      <span>${((teeTimeListing?.price * booking.number_of_players) * 0.05).toFixed(2)}</span>
+                    </div>
+                    
+                    <Separator />
                     
                     <div className="flex justify-between font-bold">
                       <span>Total</span>
-                      <span>${booking.totalPrice}</span>
+                      <span>${booking.total_price}</span>
                     </div>
                   </div>
 

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { queryClient, apiRequest } from '@/lib/queryClient';
-import { useAuth } from '@/hooks/use-auth';
+import { useAuthStore } from '@/stores/authStore';
 
 export type Notification = {
   id: number;
@@ -17,7 +17,7 @@ export type Notification = {
 
 export function useNotifications() {
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user } = useAuthStore();
   const [unreadCount, setUnreadCount] = useState(0);
 
   // Fetch notifications
@@ -31,7 +31,7 @@ export function useNotifications() {
     queryFn: ({ signal }) => 
       apiRequest('GET', '/api/notifications', undefined, { signal })
         .then(res => res.json()),
-    enabled: !!user,
+    enabled: false, // Disable notifications for now since API doesn't exist
   });
 
   // Fetch unread notification count
@@ -43,7 +43,7 @@ export function useNotifications() {
     queryFn: ({ signal }) => 
       apiRequest('GET', '/api/notifications/unread/count', undefined, { signal })
         .then(res => res.json()),
-    enabled: !!user,
+    enabled: false, // Disable notifications for now since API doesn't exist
   });
 
   // Update unread count when data changes

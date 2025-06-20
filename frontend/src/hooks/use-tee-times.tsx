@@ -374,7 +374,46 @@ export function useCreatePaymentIntent() {
   });
 }
 
-// Create a direct payment intent without a booking first (new flow)
+// Create a payment intent using new Stripe Connect Edge Function
+export interface StripePaymentIntentData {
+  teeTimeId: number;
+  numberOfPlayers: number;
+}
+
+export function useCreateStripePaymentIntent() {
+  return useMutation({
+    mutationFn: async (data: StripePaymentIntentData) => {
+      console.log('Creating Stripe payment intent via Edge Function:', data);
+      
+      // Get the current session to include auth headers
+      const { supabase } = await import('@/lib/supabaseClient');
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error('User not authenticated');
+      }
+      
+      const response = await fetch('/api/functions/v1/create-payment-intent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify(data),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return response.json();
+    },
+  });
+}
+
+// Create a direct payment intent without a booking first (legacy)
 export interface DirectPaymentIntentData {
   amount: number;
   teeTimeId: number;
