@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useLocation } from "wouter";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuthStore } from "@/stores/authStore";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Lock, AlertCircle, CheckCircle } from "lucide-react";
+import { Loader2, Lock, AlertCircle, CheckCircle, Eye, EyeOff } from "lucide-react";
 
 const updatePasswordSchema = z
   .object({
@@ -31,11 +31,12 @@ const updatePasswordSchema = z
 type UpdatePasswordFormValues = z.infer<typeof updatePasswordSchema>;
 
 export default function UpdatePasswordPage() {
-  const { user, updatePassword, isLoading: authLoading } = useAuth();
+  const { user, updatePassword, isLoading: authLoading } = useAuthStore();
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isValidRecoverySession, setIsValidRecoverySession] = useState<boolean | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   // Use either the auth context loading state or local submitting state
   const isLoading = authLoading || isSubmitting;
@@ -50,16 +51,24 @@ export default function UpdatePasswordPage() {
 
   // Check if this is a valid password recovery session
   useEffect(() => {
-    // Give some time for the auth state to settle after redirect
+    // Check if URL has recovery token parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const hasRecoveryToken = urlParams.has('token') && urlParams.get('type') === 'recovery';
+    
+    // If this looks like a recovery URL, give more time for Supabase to process
+    const timeout = hasRecoveryToken ? 5000 : 2000;
+    
     const timer = setTimeout(() => {
       if (user) {
         // User is authenticated, which should be the case for password recovery
+        console.log('✅ Valid password recovery session detected');
         setIsValidRecoverySession(true);
       } else {
         // No authenticated user, likely invalid or expired recovery session
+        console.log('❌ Invalid password recovery session - no user found');
         setIsValidRecoverySession(false);
       }
-    }, 1000);
+    }, timeout);
 
     return () => clearTimeout(timer);
   }, [user]);
@@ -222,12 +231,29 @@ export default function UpdatePasswordPage() {
                   <FormItem>
                     <FormLabel>New Password</FormLabel>
                     <FormControl>
-                      <Input
-                        type="password"
-                        placeholder="••••••••"
-                        {...field}
-                        disabled={isLoading}
-                      />
+                      <div className="relative">
+                        <Input
+                          type={showPassword ? "text" : "password"}
+                          placeholder="••••••••"
+                          {...field}
+                          disabled={isLoading}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                          onClick={() => setShowPassword(!showPassword)}
+                          disabled={isLoading}
+                          tabIndex={-1}
+                        >
+                          {showPassword ? (
+                            <EyeOff className="h-4 w-4 text-gray-400" />
+                          ) : (
+                            <Eye className="h-4 w-4 text-gray-400" />
+                          )}
+                        </Button>
+                      </div>
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -241,12 +267,29 @@ export default function UpdatePasswordPage() {
                   <FormItem>
                     <FormLabel>Confirm New Password</FormLabel>
                     <FormControl>
-                      <Input
-                        type="password"
-                        placeholder="••••••••"
-                        {...field}
-                        disabled={isLoading}
-                      />
+                      <div className="relative">
+                        <Input
+                          type={showPassword ? "text" : "password"}
+                          placeholder="••••••••"
+                          {...field}
+                          disabled={isLoading}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                          onClick={() => setShowPassword(!showPassword)}
+                          disabled={isLoading}
+                          tabIndex={-1}
+                        >
+                          {showPassword ? (
+                            <EyeOff className="h-4 w-4 text-gray-400" />
+                          ) : (
+                            <Eye className="h-4 w-4 text-gray-400" />
+                          )}
+                        </Button>
+                      </div>
                     </FormControl>
                     <FormMessage />
                   </FormItem>

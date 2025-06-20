@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { supabase } from "@/lib/supabaseClient";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuthStore } from "@/stores/authStore";
 import { Loader2, Camera, Upload } from "lucide-react";
 import { Helmet } from 'react-helmet';
 
@@ -40,7 +40,7 @@ interface ProfileUpdateData {
 export default function BasicProfileEdit() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
-  const { user, isAuthenticated, refreshUserData } = useAuth();
+  const { user, isAuthenticated, refreshUserData } = useAuthStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Local state for form and image handling
@@ -64,14 +64,38 @@ export default function BasicProfileEdit() {
       { id: user.id }
     ],
     enabled: !!user?.id,
-    onSuccess: (data) => {
-      // Pre-fill form fields with current data
-      setFirstName(data.first_name || "");
-      setLastName(data.last_name || "");
-      setBio(data.bio || "");
-      setImagePreview(data.profile_image_url || null);
-    }
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      return data;
+    },
   });
+
+  // Pre-fill form fields when profile data is loaded or fallback to auth store data
+  useEffect(() => {
+    if (profileData) {
+      console.log('🔍 [ProfileEdit] Pre-filling form with profile data:', profileData);
+      setFirstName(profileData.first_name || "");
+      setLastName(profileData.last_name || "");
+      setBio(profileData.bio || "");
+      setImagePreview(profileData.profile_image_url || null);
+    } else if (user && !isLoadingProfile) {
+      // Fallback to auth store data if profile query fails
+      console.log('🔍 [ProfileEdit] Pre-filling form with auth store data:', user);
+      setFirstName(user.firstName || "");
+      setLastName(user.lastName || "");
+      setBio(user.bio || "");
+      setImagePreview(user.profileImage || null);
+    }
+  }, [profileData, user, isLoadingProfile]);
 
   // Handle file selection and upload to Supabase Storage
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -151,22 +175,65 @@ export default function BasicProfileEdit() {
   // Profile update mutation
   const updateProfileMutation = useMutation({
     mutationFn: async (updateData: ProfileUpdateData) => {
-      const { data, error } = await supabase
+      console.log('🔍 [ProfileEdit] Starting profile update with data:', updateData);
+      
+      // Step 1: Update the profiles table
+      const { data: profileData, error: profileError } = await supabase
         .from('profiles')
         .update(updateData)
         .eq('id', user.id)
         .select()
         .single();
 
-      if (error) {
-        throw new Error(error.message);
+      if (profileError) {
+        console.error('🔍 [ProfileEdit] Profile table update failed:', profileError);
+        throw new Error(profileError.message);
       }
 
-      return data;
+      console.log('🔍 [ProfileEdit] Profile table updated successfully:', profileData);
+
+      // Step 2: Update Supabase Auth user metadata
+      const authUpdateData = {
+        data: {
+          firstName: updateData.first_name,
+          lastName: updateData.last_name,
+          // Keep existing metadata and add new fields
+          ...user.user_metadata,
+        }
+      };
+
+      console.log('🔍 [ProfileEdit] Updating auth user metadata:', authUpdateData);
+
+      const { data: authData, error: authError } = await supabase.auth.updateUser(authUpdateData);
+
+      if (authError) {
+        console.error('🔍 [ProfileEdit] Auth metadata update failed:', authError);
+        // Don't throw here - profile update was successful, just log the auth error
+        console.warn('🔍 [ProfileEdit] Profile updated but auth metadata update failed. This is not critical.');
+      } else {
+        console.log('🔍 [ProfileEdit] Auth metadata updated successfully:', authData);
+      }
+
+      return profileData;
     },
-    onSuccess: async () => {
-      // Refresh user data in AuthContext
-      await refreshUserData();
+    onSuccess: async (updatedData) => {
+      console.log('🔍 [ProfileEdit] Profile update successful, data:', updatedData);
+      
+      // Refresh user data in AuthStore with timeout
+      console.log('🔍 [ProfileEdit] Refreshing user data in auth store...');
+      try {
+        // Add timeout to prevent hanging
+        const refreshPromise = refreshUserData();
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Refresh timeout')), 5000)
+        );
+        
+        await Promise.race([refreshPromise, timeoutPromise]);
+        console.log('🔍 [ProfileEdit] Auth store refresh completed');
+      } catch (error) {
+        console.warn('🔍 [ProfileEdit] Auth store refresh failed or timed out:', error);
+        // Continue anyway - the profile was updated successfully
+      }
       
       // Invalidate related queries
       queryClient.invalidateQueries({ 

@@ -68,52 +68,61 @@ const mergeUserWithProfile = async (supabaseUser: SupabaseUser): Promise<User> =
   try {
     console.log('🔍 [authStore] mergeUserWithProfile called for user:', supabaseUser.id);
     
-    // Try to get profile data with retries
+    // Try to get profile data with timeout and limited retries
     let profile = null;
-    let attempts = 0;
-    const maxAttempts = 3;
+    const maxAttempts = 1; // Reduce retry attempts to avoid cascading timeouts
     
-    while (attempts < maxAttempts && !profile) {
-      attempts++;
+    for (let attempts = 1; attempts <= maxAttempts; attempts++) {
       console.log(`🔍 [authStore] Profile fetch attempt ${attempts}/${maxAttempts}`);
       
       try {
-        const { data, error } = await supabase
+        // Create a promise with timeout for each attempt
+        const fetchPromise = supabase
           .from('profiles')
           .select('*')
           .eq('id', supabaseUser.id)
           .single();
           
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Profile fetch timeout')), 8000)
+        );
+        
+        const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
+        
         if (error) {
           console.warn(`🔍 [authStore] Profile fetch attempt ${attempts} failed:`, error.message);
           if (attempts === maxAttempts) {
             throw error;
           }
-          // Wait before retrying
-          await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
+          // Short wait before retrying (if we had multiple attempts)
+          await new Promise(resolve => setTimeout(resolve, 1000));
           continue;
         }
         
         profile = data;
+        console.log(`🔍 [authStore] Profile fetch successful on attempt ${attempts}`);
         break;
       } catch (fetchError) {
         console.warn(`🔍 [authStore] Profile fetch attempt ${attempts} error:`, fetchError);
         if (attempts === maxAttempts) {
           throw fetchError;
         }
-        await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
 
     if (!profile) {
-      console.warn('🔍 [authStore] No profile found after retries, using basic user info');
+      console.warn('🔍 [authStore] No profile found after retries, using enhanced fallback with auth metadata');
       return {
         ...supabaseUser,
         isHost: false,
-        onboardingCompleted: false,
-        firstName: supabaseUser.user_metadata?.firstName || 'User',
-        lastName: supabaseUser.user_metadata?.lastName || '',
+        // Use true as fallback for onboarding to prevent redirect loops
+        onboardingCompleted: true, 
+        firstName: supabaseUser.user_metadata?.firstName || supabaseUser.user_metadata?.first_name || 'User',
+        lastName: supabaseUser.user_metadata?.lastName || supabaseUser.user_metadata?.last_name || '',
         username: supabaseUser.user_metadata?.username || `user_${supabaseUser.id.slice(0, 8)}`,
+        bio: supabaseUser.user_metadata?.bio || null,
+        profileImage: supabaseUser.user_metadata?.profileImage || null,
       } as User;
     }
 
@@ -136,14 +145,17 @@ const mergeUserWithProfile = async (supabaseUser: SupabaseUser): Promise<User> =
     console.log('🔍 [authStore] Final merged user onboardingCompleted:', mergedUser.onboardingCompleted);
     return mergedUser;
   } catch (error) {
-    console.warn('🔍 [authStore] Profile merge failed, using fallback user info:', error);
+    console.warn('🔍 [authStore] Profile merge failed, using enhanced fallback user info:', error);
     return {
       ...supabaseUser,
       isHost: false,
-      onboardingCompleted: false,
-      firstName: supabaseUser.user_metadata?.firstName || 'User',
-      lastName: supabaseUser.user_metadata?.lastName || '',
+      // Use true as fallback for onboarding to prevent redirect loops for existing users
+      onboardingCompleted: true,
+      firstName: supabaseUser.user_metadata?.firstName || supabaseUser.user_metadata?.first_name || 'User',
+      lastName: supabaseUser.user_metadata?.lastName || supabaseUser.user_metadata?.last_name || '',
       username: supabaseUser.user_metadata?.username || `user_${supabaseUser.id.slice(0, 8)}`,
+      bio: supabaseUser.user_metadata?.bio || null,
+      profileImage: supabaseUser.user_metadata?.profileImage || null,
     } as User;
   }
 };
@@ -310,11 +322,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       get().setUser(null);
       queryClient.clear();
       console.log('🔍 [authStore] Logout successful');
+      
+      // Redirect to home page after successful logout
+      window.location.href = '/';
     } catch (error) {
       console.error('🔍 [authStore] Logout failed:', error);
       // Even if API call fails, clear user state locally
       get().setUser(null);
       queryClient.clear();
+      // Still redirect to home page
+      window.location.href = '/';
       throw error;
     }
   },

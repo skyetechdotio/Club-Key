@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuthStore } from "@/stores/authStore";
 import { useUserClubs, useHostTeeTimeListingsSupabase, type UserClub, type TeeTimeListing } from "@/hooks/use-profile";
 import { queryClient } from "@/lib/queryClient";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -52,9 +52,9 @@ interface Review {
 export default function ProfilePage() {
   const { id } = useParams<{ id: string }>();
   const userId = id; // Keep as string since Supabase uses UUIDs
-  const { user, isAuthenticated, openAuthModal } = useAuth();
+  const { user, isAuthenticated, openAuthModal } = useAuthStore();
   const { toast } = useToast();
-  const isOwnProfile = isAuthenticated && user?.id === userId;
+  const isOwnProfile = user?.id === userId; // Check if this is the user's own profile (regardless of auth state)
   const [activeTab, setActiveTab] = useState("reviews");
   
   // Fetch user profile data using Supabase
@@ -63,10 +63,10 @@ export default function ProfilePage() {
       'supabase:profiles:single',
       { id: userId }
     ],
-    enabled: !!userId,
-    retry: 2,
+    enabled: !!userId && (isAuthenticated || !isOwnProfile), // Don't fetch if viewing own profile while logged out
+    retry: 1, // Reduce retries to avoid cascading 406 errors
     staleTime: 30 * 1000, // 30 seconds
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false, // Disable refetch on focus to prevent 406 errors
   });
 
   // Fetch user clubs if the user is a host
@@ -99,6 +99,12 @@ export default function ProfilePage() {
     ],
     enabled: !!profileUser && !!userId,
   });
+
+  // Redirect to home if user is trying to view their own profile while logged out
+  if (!isAuthenticated && isOwnProfile) {
+    window.location.href = '/';
+    return null;
+  }
 
   if (isLoading) {
     return (
@@ -198,7 +204,7 @@ export default function ProfilePage() {
                     </Button>
                   )}
 
-                  {isOwnProfile && (
+                  {isAuthenticated && isOwnProfile && (
                     <Button variant="outline" className="w-full mb-2" asChild>
                       <Link href="/profile-edit">
                         <Edit className="mr-2 h-4 w-4" /> Edit Profile
