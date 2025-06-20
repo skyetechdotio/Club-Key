@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import LoginForm from "./login-form";
 import RegisterForm from "./register-form";
 import PasswordResetForm from "./password-reset-form";
@@ -31,9 +31,9 @@ export default function AuthModal({ isOpen, onClose, view, setView }: AuthModalP
 
   return (
     <Dialog open={isOpen} onOpenChange={handleDialogClose}>
-      <DialogContent className="sm:max-w-md" aria-describedby="auth-description">
+      <DialogContent className="sm:max-w-md">
         <DialogTitle className="sr-only">{getTitle()}</DialogTitle>
-        <span id="auth-description" className="sr-only">Please enter your credentials to continue.</span>
+        <DialogDescription className="sr-only">Please enter your credentials to continue.</DialogDescription>
         
         {view === "login" ? (
           <LoginForm 

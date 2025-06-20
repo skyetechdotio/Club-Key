@@ -1,4 +1,4 @@
-import { createContext, useEffect, useState, ReactNode, useContext } from "react";
+import { createContext, useEffect, useState, ReactNode, useContext, useCallback } from "react";
 import { useLocation } from "wouter";
 import { ThemeProvider as NextThemesProvider } from "next-themes";
 import { queryClient } from "@/lib/queryClient";
@@ -103,6 +103,43 @@ export function AuthProvider({ children, openAuthModal }: AuthProviderProps) {
     }
   };
 
+  const refreshUserData = useCallback(async () => {
+    try {
+      console.log("Refreshing user data from Supabase");
+      
+      const { data: { user: currentUser }, error } = await supabase.auth.getUser();
+      
+      if (error) {
+        console.error("Error getting current user:", error);
+        return null;
+      }
+      
+      if (currentUser) {
+        const mergedUser = await mergeUserWithProfile(currentUser);
+        setUser(mergedUser);
+        
+        // Invalidate related queries to ensure consistent data across components
+        queryClient.invalidateQueries({ queryKey: ["supabase:profiles:single"] });
+        queryClient.invalidateQueries({ queryKey: [`supabase:profiles:single`, { id: currentUser.id }] });
+        queryClient.invalidateQueries({ queryKey: [`supabase:hosts:select`] });
+        queryClient.invalidateQueries({ queryKey: [`supabase:clubs:select`] });
+        
+        console.log("User data refreshed successfully", mergedUser);
+        return mergedUser;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error("Failed to refresh user data:", error);
+      toast({
+        title: "Refresh Error",
+        description: "Failed to refresh user data",
+        variant: "destructive",
+      });
+      return null;
+    }
+  }, [toast]);
+
   // Set up auth state change listener
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -126,6 +163,19 @@ export function AuthProvider({ children, openAuthModal }: AuthProviderProps) {
       subscription.unsubscribe();
     };
   }, []);
+
+  // Set up periodic user data refresh for authenticated users
+  useEffect(() => {
+    if (user) {
+      // Set up a periodic refresh every 60 seconds to ensure data consistency
+      const refreshInterval = setInterval(() => {
+        refreshUserData();
+      }, 60000);
+      
+      // Clean up interval on component unmount or user logout
+      return () => clearInterval(refreshInterval);
+    }
+  }, [user?.id, refreshUserData]);
 
   const login = async (email: string, password: string) => {
     try {
@@ -242,43 +292,6 @@ export function AuthProvider({ children, openAuthModal }: AuthProviderProps) {
         description: "There was an issue logging out, but you have been logged out locally.",
         variant: "destructive",
       });
-    }
-  };
-
-  const refreshUserData = async () => {
-    try {
-      console.log("Refreshing user data from Supabase");
-      
-      const { data: { user: currentUser }, error } = await supabase.auth.getUser();
-      
-      if (error) {
-        console.error("Error getting current user:", error);
-        return null;
-      }
-      
-      if (currentUser) {
-        const mergedUser = await mergeUserWithProfile(currentUser);
-        setUser(mergedUser);
-        
-        // Invalidate related queries to ensure consistent data across components
-        queryClient.invalidateQueries({ queryKey: ["supabase:profiles:single"] });
-        queryClient.invalidateQueries({ queryKey: [`supabase:profiles:single`, { id: currentUser.id }] });
-        queryClient.invalidateQueries({ queryKey: [`supabase:hosts:select`] });
-        queryClient.invalidateQueries({ queryKey: [`supabase:clubs:select`] });
-        
-        console.log("User data refreshed successfully", mergedUser);
-        return mergedUser;
-      }
-      
-      return null;
-    } catch (error) {
-      console.error("Failed to refresh user data:", error);
-      toast({
-        title: "Refresh Error",
-        description: "Failed to refresh user data",
-        variant: "destructive",
-      });
-      return null;
     }
   };
 

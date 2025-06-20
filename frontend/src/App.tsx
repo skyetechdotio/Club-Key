@@ -98,7 +98,7 @@ function HostOnlyRoute({ component: Component, ...rest }: { component: React.Com
 function Router({ openAuthModal }: { openAuthModal: (view: "login" | "register" | "reset-password") => void }) {
   const [location, navigate] = useLocation();
   const isHomePage = location === "/";
-  const { user, isLoading, refreshUserData } = useAuth();
+  const { user, isLoading } = useAuth();
 
   // Determine if navbar and footer should be shown
   const hideNavbar = location === "/onboarding" || location === "/update-password";
@@ -129,22 +129,6 @@ function Router({ openAuthModal }: { openAuthModal: (view: "login" | "register" 
       navigate("/onboarding", { replace: true });
     }
   }, [user, location, openAuthModal, navigate]);
-  
-  // Periodically refresh user data to ensure profile updates are reflected everywhere
-  useEffect(() => {
-    if (user) {
-      // Initial refresh
-      refreshUserData();
-      
-      // Set up a periodic refresh every 60 seconds to ensure data consistency
-      const refreshInterval = setInterval(() => {
-        refreshUserData();
-      }, 60000);
-      
-      // Clean up interval on component unmount
-      return () => clearInterval(refreshInterval);
-    }
-  }, [user?.id, refreshUserData]);
 
   return (
     <div className="flex flex-col min-h-screen">
