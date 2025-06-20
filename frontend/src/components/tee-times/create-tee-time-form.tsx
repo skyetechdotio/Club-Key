@@ -13,7 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuthStore } from "@/stores/authStore";
 import { useCreateTeeTime } from "@/hooks/use-tee-times";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -28,7 +28,7 @@ const formSchema = z.object({
   }),
   price: z.coerce.number({
     required_error: "Please enter a price",
-  }).min(1, "Price must be at least $1"),
+  }).min(0, "Price cannot be negative"),
   playersAllowed: z.coerce.number({
     required_error: "Please select the number of players",
   }).min(1, "At least 1 player must be allowed"),
@@ -43,21 +43,35 @@ interface CreateTeeTimeFormProps {
 }
 
 export default function CreateTeeTimeForm({ initialDate = new Date(), onSuccess }: CreateTeeTimeFormProps) {
-  const { user } = useAuth();
+  const { user } = useAuthStore();
   const { toast } = useToast();
   const createTeeTime = useCreateTeeTime();
   const [timeValue, setTimeValue] = useState("10:00");
   
-  // Fetch user clubs from API
+  // Fetch user clubs using Supabase
   const { data: userClubs, isLoading: isLoadingClubs } = useQuery({
-    queryKey: [`/api/users/${user?.id}/clubs`],
-    enabled: !!user?.id,
+    queryKey: [
+      'supabase:user_clubs:select',
+      {
+        columns: `
+          *,
+          clubs (
+            id,
+            name,
+            location
+          )
+        `,
+        eq: { user_id: user?.id },
+        order: { column: 'id', ascending: false }
+      }
+    ],
+    enabled: !!user?.id && !!user?.isHost,
   });
   
-  // Parse clubs from API response
+  // Parse clubs from Supabase response
   const clubs = Array.isArray(userClubs) ? userClubs.map((userClub: any) => ({
-    id: userClub.club.id,
-    name: userClub.club.name
+    id: userClub.clubs.id,
+    name: userClub.clubs.name
   })) : [];
   
   // Form definition
@@ -66,11 +80,18 @@ export default function CreateTeeTimeForm({ initialDate = new Date(), onSuccess 
     defaultValues: {
       clubId: undefined,
       date: initialDate,
-      price: 100,
+      price: 0, // Changed from 100 to 0
       playersAllowed: 3,
       notes: "",
     },
   });
+
+  // Auto-select the first available club when clubs are loaded
+  useEffect(() => {
+    if (clubs.length > 0 && !form.getValues("clubId")) {
+      form.setValue("clubId", clubs[0].id);
+    }
+  }, [clubs, form]);
   
   // Combine date and time on submit
   const onSubmit = (values: FormValues) => {
@@ -156,7 +177,7 @@ export default function CreateTeeTimeForm({ initialDate = new Date(), onSuccess 
                       </SelectItem>
                     )) : (
                       <div className="p-2 text-center text-muted-foreground">
-                        No clubs available
+                        {isLoadingClubs ? "Loading clubs..." : "No clubs available. Please add a club in your profile first."}
                       </div>
                     )}
                   </SelectContent>
@@ -247,7 +268,7 @@ export default function CreateTeeTimeForm({ initialDate = new Date(), onSuccess 
                         type="number"
                         className="pl-9"
                         {...field}
-                        min={1}
+                        min={0}
                       />
                     </div>
                   </FormControl>
@@ -322,9 +343,11 @@ export default function CreateTeeTimeForm({ initialDate = new Date(), onSuccess 
           <CardContent className="pt-4">
             <h3 className="text-sm font-medium mb-2">Preview</h3>
             <div className="text-sm">
-              <p><span className="font-medium">Club:</span> {clubs && clubs.length > 0 && form.watch("clubId") ? 
-                clubs.find((c: any) => c.id.toString() === form.watch("clubId").toString())?.name || "Not selected" 
-                : "Not selected"}</p>
+              <p><span className="font-medium">Club:</span> {
+                clubs.length > 0 && form.watch("clubId") ? 
+                  clubs.find((c: any) => c.id.toString() === form.watch("clubId").toString())?.name || "Not selected" 
+                  : clubs.length === 0 ? "No clubs available" : "Not selected"
+              }</p>
               <p>
                 <span className="font-medium">Date & Time:</span> {form.watch("date") 
                   ? `${format(form.watch("date"), "MMMM d, yyyy")} at ${timeValue}`
@@ -347,7 +370,7 @@ export default function CreateTeeTimeForm({ initialDate = new Date(), onSuccess 
           </Button>
           <Button 
             type="submit" 
-            disabled={createTeeTime.isPending}
+            disabled={createTeeTime.isPending || clubs.length === 0}
             className="bg-primary hover:bg-primary-dark"
           >
             {createTeeTime.isPending ? "Creating..." : "Create Tee Time"}

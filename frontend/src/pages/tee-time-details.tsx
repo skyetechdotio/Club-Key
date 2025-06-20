@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useTeeTimeListing } from "@/hooks/use-tee-times";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuthStore } from "@/stores/authStore";
 import { useBookTeeTime } from "@/hooks/use-tee-times";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -34,7 +34,7 @@ export default function TeeTimeDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const teeTimeId = parseInt(id);
   const [, navigate] = useLocation();
-  const { user, isAuthenticated, openAuthModal } = useAuth();
+  const { user, isAuthenticated, openAuthModal } = useAuthStore();
   const { toast } = useToast();
   const [playerCount, setPlayerCount] = useState("1");
   

@@ -108,10 +108,13 @@ export function useTeeTimeListings(filters?: TeeTimeSearchFilters) {
           )
         `,
         filters,
+        eq: { status: 'available' }, // Only show available tee times
         order: { column: 'date', ascending: true }
       }
     ],
     enabled: true,
+    retry: 3, // Retry failed requests
+    staleTime: 30 * 1000, // Cache for 30 seconds
   });
 }
 

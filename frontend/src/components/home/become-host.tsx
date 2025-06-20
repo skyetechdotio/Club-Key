@@ -1,11 +1,11 @@
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { CheckCircle } from "lucide-react";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuthStore } from "@/stores/authStore";
 import magnoliaBackground from "@/assets/images/magnolia-background.jpg";
 
 export default function BecomeHostSection() {
-  const { user, isAuthenticated, openAuthModal } = useAuth();
+  const { user, isAuthenticated, openAuthModal } = useAuthStore();
 
   const handleBecomeHost = () => {
     if (!isAuthenticated) {

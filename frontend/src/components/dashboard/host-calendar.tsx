@@ -3,10 +3,10 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, parse, 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { CalendarIcon, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { TeeTimeListing as SupabaseTeeTimeListing } from "@/hooks/use-profile";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuthStore } from "@/stores/authStore";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import CreateTeeTimeForm from "../tee-times/create-tee-time-form";
@@ -24,7 +24,7 @@ interface HostCalendarProps {
 }
 
 export default function HostCalendar({ teeTimeListings = [] }: HostCalendarProps) {
-  const { user } = useAuth();
+  const { user } = useAuthStore();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [calendarDays, setCalendarDays] = useState<CalendarDay[]>([]);
@@ -158,6 +158,9 @@ export default function HostCalendar({ teeTimeListings = [] }: HostCalendarProps
               <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Create New Tee Time</DialogTitle>
+                  <DialogDescription>
+                    Create a new tee time listing for your golf club. Fill in the details below to make your tee time available for booking.
+                  </DialogDescription>
                 </DialogHeader>
                 <CreateTeeTimeForm 
                   initialDate={selectedDay || new Date()} 

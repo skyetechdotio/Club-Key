@@ -172,8 +172,13 @@ function Router({ openAuthModal }: { openAuthModal: (view: "login" | "register" 
           <Route path="/tee-times/:id" component={TeeTimeDetailsPage} />
           <Route path="/profile/:id">
             {params => {
-              const id = parseInt(params.id);
-              return !isNaN(id) ? <ProfilePage /> : <Redirect to="/" />;
+              // Handle both UUID strings and numeric IDs
+              const id = params.id;
+              const isValidId = id && (
+                /^[0-9a-fA-F-]{36}$/.test(id) ||  // UUID format
+                (!isNaN(parseInt(id)) && parseInt(id) > 0)  // Numeric ID
+              );
+              return isValidId ? <ProfilePage /> : <Redirect to="/" />;
             }}
           </Route>
           

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuthStore } from "@/stores/authStore";
 import { useCreatePaymentIntent } from "@/hooks/use-tee-times";
 import { useStripe, useElements, Elements, PaymentElement } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
@@ -118,7 +118,7 @@ function CheckoutForm({ bookingId, onSuccess }: { bookingId: number; onSuccess: 
   const [isProcessing, setIsProcessing] = useState(false);
   const { toast } = useToast();
   const [, navigate] = useLocation();
-  const { user } = useAuth();
+  const { user } = useAuthStore();
   const manuallyConfirmBooking = useManualBookingConfirmation();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -211,7 +211,7 @@ function CheckoutForm({ bookingId, onSuccess }: { bookingId: number; onSuccess: 
 export default function CheckoutPage() {
   const { bookingId } = useParams<{ bookingId: string }>();
   const [, navigate] = useLocation();
-  const { user, isAuthenticated, openAuthModal } = useAuth();
+  const { user, isAuthenticated, openAuthModal } = useAuthStore();
   const { toast } = useToast();
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const { mutate: createPaymentIntent, isPending } = useCreatePaymentIntent();

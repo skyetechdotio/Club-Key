@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Heart, Star } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuthStore } from "@/stores/authStore";
 import { format } from "date-fns";
 
 export interface TeeTimeCardProps {
@@ -39,7 +39,7 @@ export default function TeeTimeCard({
   isFavorited = false,
   onFavoriteToggle
 }: TeeTimeCardProps) {
-  const { isAuthenticated, openAuthModal } = useAuth();
+  const { isAuthenticated, openAuthModal } = useAuthStore();
   const { toast } = useToast();
   const [favorite, setFavorite] = useState(isFavorited);
 
@@ -78,6 +78,10 @@ export default function TeeTimeCard({
           src={clubImageUrl || "https://images.unsplash.com/photo-1535131749006-b7f58c99034b?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=400"} 
           alt={clubName} 
           className="w-full h-full object-cover transition-all hover:scale-105"
+          onError={(e) => {
+            const target = e.target as HTMLImageElement;
+            target.src = "https://images.unsplash.com/photo-1535131749006-b7f58c99034b?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=400";
+          }}
         />
         <button
           onClick={handleFavoriteClick}

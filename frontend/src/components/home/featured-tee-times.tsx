@@ -13,6 +13,9 @@ export default function FeaturedTeeTimesSection() {
   const { toast } = useToast();
   const { data: teeTimeListings, isLoading, error } = useTeeTimeListings();
   const [favoriteTeeTimes, setFavoriteTeeTimes] = useState<number[]>([]);
+
+  // Debug logging
+  console.log('🔍 [FeaturedTeeTimes] Data:', { teeTimeListings, isLoading, error, isAuthenticated });
   
   // Only get the first 3 tee times for featured section
   const featuredTeeTimeListings = teeTimeListings?.slice(0, 3) || [];
@@ -136,9 +139,17 @@ export default function FeaturedTeeTimesSection() {
             <Card key={teeTime.id} className="bg-white rounded-lg overflow-hidden shadow-md hover:shadow-lg transition-all">
               <div className="h-48 w-full overflow-hidden relative">
                 <img 
-                  src={teeTime.club?.imageUrl || "https://images.unsplash.com/photo-1633710379064-ca8823aadce1?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=400&q=80"} 
-                  alt={teeTime.club?.name} 
+                  src={(teeTime.club as any)?.image_url || teeTime.club?.imageUrl || "https://images.unsplash.com/photo-1535131749006-b7f58c99034b?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=400"} 
+                  alt={teeTime.club?.name || "Golf Course"} 
                   className="w-full h-full object-cover transition-all hover:scale-105"
+                  onError={(e) => {
+                    console.log('🔍 [FeaturedTeeTimes] Image failed to load:', (teeTime.club as any)?.image_url);
+                    const target = e.target as HTMLImageElement;
+                    target.src = "https://images.unsplash.com/photo-1535131749006-b7f58c99034b?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=400";
+                  }}
+                  onLoad={() => {
+                    console.log('🔍 [FeaturedTeeTimes] Image loaded successfully:', (teeTime.club as any)?.image_url);
+                  }}
                 />
                 <button
                   onClick={() => toggleFavorite(teeTime.id)}
@@ -170,15 +181,17 @@ export default function FeaturedTeeTimesSection() {
                 </p>
                 <div className="flex items-center mb-3">
                   <Avatar className="h-8 w-8 mr-2">
-                    <AvatarImage src={teeTime.host?.profileImage} alt={teeTime.host?.username} />
+                    <AvatarImage src={(teeTime.host as any)?.profile_image_url || teeTime.host?.profileImage} alt={teeTime.host?.username} />
                     <AvatarFallback className="bg-primary text-white">
-                      {teeTime.host?.firstName?.[0]}
-                      {teeTime.host?.lastName?.[0]}
+                      {(teeTime.host as any)?.first_name?.[0] || teeTime.host?.firstName?.[0] || teeTime.host?.username?.[0]}
+                      {(teeTime.host as any)?.last_name?.[0] || teeTime.host?.lastName?.[0] || teeTime.host?.username?.[1]}
                     </AvatarFallback>
                   </Avatar>
                   <div>
                     <p className="text-sm font-medium">
-                      Hosted by {teeTime.host?.firstName || teeTime.host?.username}
+                      Hosted by {
+                        (teeTime.host as any)?.first_name || teeTime.host?.firstName || teeTime.host?.username
+                      }
                     </p>
                     <p className="text-xs text-neutral-medium">Club Member for 5+ years</p>
                   </div>

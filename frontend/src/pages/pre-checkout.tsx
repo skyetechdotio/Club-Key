@@ -6,14 +6,14 @@ import { Separator } from "@/components/ui/separator";
 import { AlertCircle, ArrowLeft, CalendarDays, Clock, Loader2, Users, Shield, Info } from "lucide-react";
 import { formatDate, formatTime } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuthStore } from "@/stores/authStore";
 import { useTeeTimeListing, useBookTeeTime, BookTeeTimeData } from "@/hooks/use-tee-times";
 import { Helmet } from 'react-helmet';
 
 export default function PreCheckoutPage() {
   const { teeTimeId } = useParams<{ teeTimeId: string }>();
   const [, navigate] = useLocation();
-  const { user, isAuthenticated, openAuthModal } = useAuth();
+  const { user, isAuthenticated, openAuthModal } = useAuthStore();
   const { toast } = useToast();
   const [bookingInfo, setBookingInfo] = useState<BookTeeTimeData | null>(null);
   

@@ -248,9 +248,17 @@ export default function TeeTimesPage() {
                   clubName={teeTime.clubs?.name || "Unknown Club"}
                   clubLocation={teeTime.clubs?.location || "Unknown Location"}
                   clubImageUrl={teeTime.clubs?.image_url || ""}
-                  hostName={teeTime.host?.first_name || teeTime.host?.username || "Unknown Host"}
+                  hostName={
+                    teeTime.host?.first_name 
+                      ? `${teeTime.host.first_name}${teeTime.host.last_name ? ` ${teeTime.host.last_name}` : ''}`
+                      : teeTime.host?.username || "Unknown Host"
+                  }
                   hostImageUrl={teeTime.host?.profile_image_url}
-                  hostInitials={(teeTime.host?.first_name?.[0] || "") + (teeTime.host?.last_name?.[0] || "")}
+                  hostInitials={
+                    teeTime.host?.first_name && teeTime.host?.last_name
+                      ? `${teeTime.host.first_name[0]}${teeTime.host.last_name[0]}`
+                      : teeTime.host?.username?.substring(0, 2).toUpperCase() || "UH"
+                  }
                   date={teeTime.date}
                   price={teeTime.price}
                   rating={0} // TODO: Add rating calculation from reviews

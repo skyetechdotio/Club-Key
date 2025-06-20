@@ -1,11 +1,11 @@
 import { useLocation } from "wouter";
 import SearchFilters, { SearchFilters as SearchFiltersType } from "@/components/listings/search-filters";
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuthStore } from "@/stores/authStore";
 
 export default function HeroSection() {
   const [, setLocation] = useLocation();
-  const { openAuthModal, isAuthenticated } = useAuth();
+  const { openAuthModal, isAuthenticated } = useAuthStore();
 
   const handleSearch = (filters: SearchFiltersType) => {
     console.log("Hero search called with filters:", filters);
