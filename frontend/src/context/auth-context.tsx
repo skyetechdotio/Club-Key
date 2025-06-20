@@ -37,6 +37,7 @@ interface AuthContextType {
   refreshUserData: () => Promise<any>;
   requestPasswordReset: (email: string) => Promise<void>;
   updatePassword: (newPassword: string) => Promise<void>;
+  updateUser: (newUser: User) => void;
 }
 
 export const AuthContext = createContext<AuthContextType>({
@@ -50,6 +51,7 @@ export const AuthContext = createContext<AuthContextType>({
   refreshUserData: async () => {},
   requestPasswordReset: async () => {},
   updatePassword: async () => {},
+  updateUser: () => {},
 });
 
 interface AuthProviderProps {
@@ -93,6 +95,10 @@ export function AuthProvider({ children, openAuthModal }: AuthProviderProps) {
         } as User;
       }
 
+      console.log('🔍 [mergeUserWithProfile] Raw profile data from database:', profile);
+      console.log('🔍 [mergeUserWithProfile] Raw onboarding_completed value:', profile.onboarding_completed);
+      console.log('🔍 [mergeUserWithProfile] Type of onboarding_completed:', typeof profile.onboarding_completed);
+
       // Merge Supabase user data with profile data
       const mergedUser = {
         ...supabaseUser,
@@ -101,10 +107,11 @@ export function AuthProvider({ children, openAuthModal }: AuthProviderProps) {
         bio: profile.bio,
         profileImage: profile.profile_image,
         isHost: profile.is_host || false,
-        onboardingCompleted: profile.onboarding_completed || false,
+        onboardingCompleted: profile.onboarding_completed === true, // Explicit true check
         username: profile.username,
       } as User;
       
+      console.log('🔍 [mergeUserWithProfile] Final merged user onboardingCompleted:', mergedUser.onboardingCompleted);
       return mergedUser;
     } catch (error) {
       console.warn('Profile merge failed, using fallback user info:', error);
@@ -140,6 +147,7 @@ export function AuthProvider({ children, openAuthModal }: AuthProviderProps) {
         queryClient.invalidateQueries({ queryKey: [`supabase:clubs:select`] });
         
         console.log("User data refreshed successfully", mergedUser);
+        console.log("🔍 [refreshUserData] About to return mergedUser with onboardingCompleted:", mergedUser.onboardingCompleted);
         return mergedUser;
       }
       
@@ -260,10 +268,10 @@ export function AuthProvider({ children, openAuthModal }: AuthProviderProps) {
         password: data.password,
         options: {
           data: {
-            firstName: data.firstName,
-            lastName: data.lastName,
-            isHost: data.isHost || false,
-            username: data.username,
+            first_name: data.firstName,
+            last_name: data.lastName,
+            is_host: data.isHost || false,
+            username: data.username || null, // Explicitly set to null if not provided
           },
         },
       });
@@ -392,6 +400,11 @@ export function AuthProvider({ children, openAuthModal }: AuthProviderProps) {
     }
   };
 
+  const updateUser = (newUser: User) => {
+    console.log("🔄 [updateUser] Manually updating auth context with user:", newUser);
+    setUser(newUser);
+  };
+
   const contextValue: AuthContextType = {
     user,
     isAuthenticated: !!user,
@@ -403,6 +416,7 @@ export function AuthProvider({ children, openAuthModal }: AuthProviderProps) {
     refreshUserData,
     requestPasswordReset,
     updatePassword,
+    updateUser,
   };
 
   return (

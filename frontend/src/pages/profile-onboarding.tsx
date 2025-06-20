@@ -47,7 +47,7 @@ interface NewClubData {
 export default function ProfileOnboarding() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
-  const { user, isAuthenticated, refreshUserData } = useAuth();
+  const { user, isAuthenticated, refreshUserData, updateUser } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Current step state
@@ -182,6 +182,9 @@ export default function ProfileOnboarding() {
         updateData.profile_image_url = newProfileImageUrl;
       }
 
+      console.log('🟢 M2: [updateProfileMutation] Starting database update with data:', updateData);
+      console.log('🟢 M2: [updateProfileMutation] Target user ID:', user.id);
+
       const { data, error } = await supabase
         .from('profiles')
         .update(updateData)
@@ -190,18 +193,25 @@ export default function ProfileOnboarding() {
         .single();
 
       if (error) {
+        console.log('🔴 M2: [updateProfileMutation] Database update failed:', error);
         throw new Error(error.message);
       }
 
+      console.log('🟢 M2: [updateProfileMutation] Database update successful, returned data:', data);
       return data;
     },
-    onSuccess: async () => {
+    onSuccess: async (data) => {
+      console.log('🟢 M3: [updateProfileMutation.onSuccess] Profile update mutation succeeded');
+      console.log('🟢 M3: [updateProfileMutation.onSuccess] Updated profile data:', data);
+      
       await refreshUserData();
+      console.log('🟢 M3: [updateProfileMutation.onSuccess] User data refreshed');
       
       // Invalidate related queries
       queryClient.invalidateQueries({ 
         queryKey: ['supabase:profiles:single', { id: user.id }] 
       });
+      console.log('🟢 M3: [updateProfileMutation.onSuccess] Query cache invalidated');
 
       toast({
         title: "Profile updated",
@@ -210,13 +220,16 @@ export default function ProfileOnboarding() {
 
       // Move to next step based on user type
       if (user.isHost) {
+        console.log('🟢 M3: [updateProfileMutation.onSuccess] User is host, moving to club selection step');
         setCurrentStep(OnboardingStep.CLUB_SELECTION);
       } else {
+        console.log('🟢 M3: [updateProfileMutation.onSuccess] User is guest, completing onboarding');
         // For guests, complete onboarding
         completeOnboarding();
       }
     },
     onError: (error: Error) => {
+      console.log('🔴 M3: [updateProfileMutation.onError] Profile update mutation failed:', error);
       console.error('Profile update error:', error);
       toast({
         title: "Update failed",
@@ -321,38 +334,89 @@ export default function ProfileOnboarding() {
   // Complete onboarding mutation
   const completeOnboardingMutation = useMutation({
     mutationFn: async () => {
+      console.log('🟢 M4: [completeOnboardingMutation] Starting onboarding completion');
+      console.log('🟢 M4: [completeOnboardingMutation] User ID:', user.id);
+      console.log('🟢 M4: [completeOnboardingMutation] Current user onboarding status:', user.onboardingCompleted);
+
+      const updateData = {
+        onboarding_completed: true,
+        updated_at: new Date().toISOString(),
+      };
+
+      console.log('🟢 M4: [completeOnboardingMutation] Updating profile with data:', updateData);
+
       const { data, error } = await supabase
         .from('profiles')
-        .update({
-          onboarding_completed: true,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq('id', user.id)
         .select()
         .single();
 
       if (error) {
+        console.log('🔴 M4: [completeOnboardingMutation] Database update failed:', error);
         throw new Error(error.message);
       }
 
+      console.log('🟢 M4: [completeOnboardingMutation] Database update successful, returned data:', data);
+      console.log('🟢 M4: [completeOnboardingMutation] Onboarding completed status in returned data:', data.onboarding_completed);
       return data;
     },
-    onSuccess: async () => {
-      await refreshUserData();
+    onSuccess: async (data) => {
+      console.log('🟢 M5: [completeOnboardingMutation.onSuccess] Onboarding completion mutation succeeded');
+      console.log('🟢 M5: [completeOnboardingMutation.onSuccess] Final profile data:', data);
+      console.log('🟢 M5: [completeOnboardingMutation.onSuccess] Final onboarding_completed status:', data.onboarding_completed);
       
       queryClient.invalidateQueries({ 
         queryKey: ['supabase:profiles:single', { id: user.id }] 
       });
+      console.log('🟢 M5: [completeOnboardingMutation.onSuccess] Query cache invalidated');
 
       toast({
         title: "Welcome to ClubKey!",
         description: "Your onboarding is complete. Let's get started!",
       });
 
-      // Navigate to dashboard
-      navigate("/dashboard");
+      console.log('🟢 M5: [completeOnboardingMutation.onSuccess] Refreshing user data...');
+      // CRITICAL CHANGE: Capture the returned fresh user object
+      const refreshedUser = await refreshUserData();
+      console.log('🟢 M5: [completeOnboardingMutation.onSuccess] User data refreshed, returned user:', refreshedUser);
+      console.log('🟢 M5: [completeOnboardingMutation.onSuccess] Returned user type:', typeof refreshedUser);
+      console.log('🟢 M5: [completeOnboardingMutation.onSuccess] Returned user onboardingCompleted:', refreshedUser?.onboardingCompleted);
+      
+      // FORCE FIX: Since refreshUserData seems to return wrong object, let's construct the correct one from database data
+      const correctedUser = {
+        ...user, // Keep existing user structure
+        onboardingCompleted: data.onboarding_completed === true, // Use the database response directly
+        bio: data.bio,
+        profileImage: data.profile_image_url,
+        username: data.username,
+        firstName: data.first_name,
+        lastName: data.last_name,
+      };
+      
+      console.log('🔄 M5: [completeOnboardingMutation.onSuccess] Constructed corrected user:', correctedUser);
+      console.log('🔄 M5: [completeOnboardingMutation.onSuccess] Corrected user onboardingCompleted:', correctedUser.onboardingCompleted);
+      
+      // Force update the auth context with corrected user
+      updateUser(correctedUser);
+      console.log('🔄 M5: [completeOnboardingMutation.onSuccess] Auth context manually updated');
+      
+      // Double check - use the corrected user for navigation decision
+      if (correctedUser.onboardingCompleted) {
+        console.log('🟢 M6: [completeOnboardingMutation.onSuccess] Onboarding confirmed from corrected data. Navigating to dashboard...');
+        navigate("/dashboard", { replace: true });
+      } else {
+        console.error('🔴 M6: [completeOnboardingMutation.onSuccess] Onboarding completion failed even in corrected data. Halting redirect.');
+        console.error('🔴 M6: [completeOnboardingMutation.onSuccess] Database response onboarding_completed:', data.onboarding_completed);
+        toast({
+          title: "Update Error",
+          description: "Could not confirm profile completion. Please try refreshing the page.",
+          variant: "destructive",
+        });
+      }
     },
     onError: (error: Error) => {
+      console.log('🔴 M5: [completeOnboardingMutation.onError] Onboarding completion mutation failed:', error);
       console.error('Onboarding completion error:', error);
       toast({
         title: "Error completing setup",
@@ -364,12 +428,23 @@ export default function ProfileOnboarding() {
 
   // Helper function to complete onboarding
   const completeOnboarding = () => {
+    console.log('🟢 M4: [completeOnboarding] Helper function called, triggering completeOnboardingMutation');
     completeOnboardingMutation.mutate();
   };
 
   // Handle profile form submission
   const handleProfileSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    
+    const updateData = {
+      bio: bio.trim() || null,
+      updated_at: new Date().toISOString(),
+      ...(newProfileImageUrl && { profile_image_url: newProfileImageUrl }),
+    };
+
+    console.log('🟢 M1: [handleProfileSubmit] Preparing to update profile with data:', updateData);
+    console.log('🟢 M1: [handleProfileSubmit] User ID:', user.id);
+    console.log('🟢 M1: [handleProfileSubmit] User isHost:', user.isHost);
     updateProfileMutation.mutate();
   };
 

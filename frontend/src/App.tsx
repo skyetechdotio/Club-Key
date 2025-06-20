@@ -39,66 +39,20 @@ import CheckEmailModal from "@/components/auth/CheckEmailModal";
 import SanityCheckComponent from "@/components/_dev_examples/SanityCheckComponent";
 import { Loader2 } from "lucide-react";
 
-// Protected Route component
-function ProtectedRoute({ component: Component, ...rest }: { component: React.ComponentType, path: string }) {
-  const { user, isLoading } = useAuth();
-  const [matches] = useRoute(rest.path);
-
-  // Debug information
-  console.log("ProtectedRoute check:", {
-    path: rest.path,
-    matches,
-    isLoading,
-    user,
-    onboardingCompleted: user?.onboardingCompleted
-  });
-
-  if (isLoading) {
-    return matches ? (
-      <div className="flex h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    ) : null;
-  }
-
-  if (!user && matches) {
-    console.log("User not authenticated, redirecting to home");
-    return <Redirect to="/" />;
-  }
-
-  // Check if user needs to complete onboarding
-  if (user && !user.onboardingCompleted && matches && rest.path !== "/onboarding" && rest.path !== "/update-password") {
-    console.log(`User needs onboarding. Current path: ${rest.path}. Redirecting to /onboarding.`);
-    return <Redirect to="/onboarding" />;
-  }
-
-  return <Component />;
-}
-
-// Host Only Route component
-function HostOnlyRoute({ component: Component, ...rest }: { component: React.ComponentType, path: string }) {
-  const { user, isLoading } = useAuth();
-  const [matches] = useRoute(rest.path);
-
-  if (isLoading) {
-    return matches ? (
-      <div className="flex h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    ) : null;
-  }
-
-  if ((!user || !user.isHost) && matches) {
-    return <Redirect to="/" />;
-  }
-
-  return <Component />;
-}
+// Removed ProtectedRoute and HostOnlyRoute components - logic moved to Router
 
 function Router({ openAuthModal }: { openAuthModal: (view: "login" | "register" | "reset-password") => void }) {
   const [location, navigate] = useLocation();
   const isHomePage = location === "/";
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, isAuthenticated } = useAuth();
+
+  // Debug: Log when Router re-renders with user state changes
+  console.log("🔄 [Router] Rendering with state:", {
+    location,
+    isAuthenticated,
+    onboardingCompleted: user?.onboardingCompleted,
+    isLoading
+  });
 
   // Determine if navbar and footer should be shown
   const hideNavbar = location === "/onboarding" || location === "/update-password";
@@ -151,61 +105,10 @@ function Router({ openAuthModal }: { openAuthModal: (view: "login" | "register" 
       {!hideNavbar && <Navbar />}
       <main className={`flex-grow ${hideNavbar || isHomePage ? 'pt-0' : 'pt-4'}`}>
         <Switch>
+          {/* Public routes */}
           <Route path="/" component={Home} />
-          
-          {/* Password Reset Page - No auth required, handles its own session validation */}
-          <Route path="/update-password" component={UpdatePasswordPage} />
-          
-          {/* Sanity Check Route for Testing TanStack Query + Supabase Integration */}
-          <Route path="/sanity-check" component={SanityCheckComponent} />
-          
           <Route path="/tee-times" component={TeeTimesPage} />
           <Route path="/tee-times/:id" component={TeeTimeDetailsPage} />
-          <Route path="/profile/:id">
-            {params => {
-              const id = parseInt(params.id);
-              return !isNaN(id) ? <ProfilePage /> : <Redirect to="/" />;
-            }}
-          </Route>
-          
-          {/* Onboarding routes */}
-          <Route path="/onboarding" component={ProfileOnboarding} />
-          <Route path="/profile-onboarding">
-            <ProtectedRoute path="/profile-onboarding" component={ProfileOnboarding} />
-          </Route>
-          
-          {/* Protected routes */}
-          <Route path="/profile-edit">
-            <ProtectedRoute path="/profile-edit" component={BasicProfileEdit} />
-          </Route>
-          <Route path="/dashboard">
-            <ProtectedRoute path="/dashboard" component={Dashboard} />
-          </Route>
-          <Route path="/pre-checkout/:teeTimeId">
-            <ProtectedRoute path="/pre-checkout/:teeTimeId" component={PreCheckoutPage} />
-          </Route>
-          <Route path="/checkout/:bookingId">
-            <ProtectedRoute path="/checkout/:bookingId" component={CheckoutPage} />
-          </Route>
-          <Route path="/messages">
-            <ProtectedRoute path="/messages" component={MessagesPage} />
-          </Route>
-          <Route path="/messages/:userId">
-            <ProtectedRoute path="/messages/:userId" component={MessagesPage} />
-          </Route>
-          <Route path="/notifications">
-            <ProtectedRoute path="/notifications" component={NotificationsPage} />
-          </Route>
-          
-          {/* Host-only routes */}
-          <Route path="/create-listing">
-            <HostOnlyRoute path="/create-listing" component={CreateListing} />
-          </Route>
-          <Route path="/edit-listing/:listingId">
-            <HostOnlyRoute path="/edit-listing/:listingId" component={EditListingPage} />
-          </Route>
-          
-          {/* Standard pages */}
           <Route path="/about" component={AboutPage} />
           <Route path="/press" component={PressPage} />
           <Route path="/privacy-policy" component={PrivacyPolicyPage} />
@@ -213,6 +116,129 @@ function Router({ openAuthModal }: { openAuthModal: (view: "login" | "register" 
           <Route path="/cookie-policy" component={CookiePolicyPage} />
           <Route path="/contact" component={ContactPage} />
           <Route path="/help" component={HelpPage} />
+          
+          {/* Password Reset Page - No auth required, handles its own session validation */}
+          <Route path="/update-password" component={UpdatePasswordPage} />
+          
+          {/* Sanity Check Route for Testing TanStack Query + Supabase Integration */}
+          <Route path="/sanity-check" component={SanityCheckComponent} />
+          
+          {/* Profile view route - special case with parameter validation */}
+          <Route path="/profile/:id">
+            {params => {
+              const id = parseInt(params.id);
+              if (isNaN(id)) return <Redirect to="/" />;
+              
+              if (!isAuthenticated) {
+                return <Redirect to="/" />;
+              }
+              
+              if (!user?.onboardingCompleted) {
+                return <Redirect to="/onboarding" />;
+              }
+              
+              return <ProfilePage />;
+            }}
+          </Route>
+          
+          {/* Onboarding Route */}
+          <Route path="/onboarding">
+            {isAuthenticated ? <ProfileOnboarding /> : <Redirect to="/" />}
+          </Route>
+          
+          {/* Authenticated-Only Routes */}
+          <Route path="/dashboard">
+            {!isAuthenticated ? (
+              <Redirect to="/" />
+            ) : !user?.onboardingCompleted ? (
+              <Redirect to="/onboarding" />
+            ) : (
+              <Dashboard />
+            )}
+          </Route>
+          
+          <Route path="/profile-edit">
+            {!isAuthenticated ? (
+              <Redirect to="/" />
+            ) : !user?.onboardingCompleted ? (
+              <Redirect to="/onboarding" />
+            ) : (
+              <BasicProfileEdit />
+            )}
+          </Route>
+          
+          <Route path="/pre-checkout/:teeTimeId">
+            {!isAuthenticated ? (
+              <Redirect to="/" />
+            ) : !user?.onboardingCompleted ? (
+              <Redirect to="/onboarding" />
+            ) : (
+              <PreCheckoutPage />
+            )}
+          </Route>
+          
+          <Route path="/checkout/:bookingId">
+            {!isAuthenticated ? (
+              <Redirect to="/" />
+            ) : !user?.onboardingCompleted ? (
+              <Redirect to="/onboarding" />
+            ) : (
+              <CheckoutPage />
+            )}
+          </Route>
+          
+          <Route path="/messages">
+            {!isAuthenticated ? (
+              <Redirect to="/" />
+            ) : !user?.onboardingCompleted ? (
+              <Redirect to="/onboarding" />
+            ) : (
+              <MessagesPage />
+            )}
+          </Route>
+          
+          <Route path="/messages/:userId">
+            {!isAuthenticated ? (
+              <Redirect to="/" />
+            ) : !user?.onboardingCompleted ? (
+              <Redirect to="/onboarding" />
+            ) : (
+              <MessagesPage />
+            )}
+          </Route>
+          
+          <Route path="/notifications">
+            {!isAuthenticated ? (
+              <Redirect to="/" />
+            ) : !user?.onboardingCompleted ? (
+              <Redirect to="/onboarding" />
+            ) : (
+              <NotificationsPage />
+            )}
+          </Route>
+          
+          {/* Host-only routes */}
+          <Route path="/create-listing">
+            {!isAuthenticated || !user?.isHost ? (
+              <Redirect to="/dashboard" />
+            ) : !user?.onboardingCompleted ? (
+              <Redirect to="/onboarding" />
+            ) : (
+              <CreateListing />
+            )}
+          </Route>
+          
+          <Route path="/edit-listing/:listingId">
+            {!isAuthenticated || !user?.isHost ? (
+              <Redirect to="/dashboard" />
+            ) : !user?.onboardingCompleted ? (
+              <Redirect to="/onboarding" />
+            ) : (
+              <EditListingPage />
+            )}
+          </Route>
+          
+          {/* 404 Route */}
           <Route component={NotFound} />
         </Switch>
       </main>

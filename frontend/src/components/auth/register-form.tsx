@@ -46,7 +46,6 @@ export default function RegisterForm({ onSuccess, switchToLogin }: RegisterFormP
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Use either the auth context loading state or local submitting state
   const isLoading = authLoading || isSubmitting;
@@ -217,6 +216,7 @@ export default function RegisterForm({ onSuccess, switchToLogin }: RegisterFormP
                     />
                     <button
                       type="button"
+                      tabIndex={-1}
                       className="absolute inset-y-0 right-0 pr-3 flex items-center"
                       onClick={() => setShowPassword(!showPassword)}
                       disabled={isLoading}
@@ -243,7 +243,7 @@ export default function RegisterForm({ onSuccess, switchToLogin }: RegisterFormP
                 <FormControl>
                   <div className="relative">
                     <Input
-                      type={showConfirmPassword ? "text" : "password"}
+                      type={showPassword ? "text" : "password"}
                       placeholder="••••••••"
                       {...field}
                       disabled={isLoading}
@@ -251,11 +251,12 @@ export default function RegisterForm({ onSuccess, switchToLogin }: RegisterFormP
                     />
                     <button
                       type="button"
+                      tabIndex={-1}
                       className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      onClick={() => setShowPassword(!showPassword)}
                       disabled={isLoading}
                     >
-                      {showConfirmPassword ? (
+                      {showPassword ? (
                         <EyeOff className="h-4 w-4 text-gray-400 hover:text-gray-600" />
                       ) : (
                         <Eye className="h-4 w-4 text-gray-400 hover:text-gray-600" />
