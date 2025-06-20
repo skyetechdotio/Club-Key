@@ -67,8 +67,8 @@ function ProtectedRoute({ component: Component, ...rest }: { component: React.Co
   }
 
   // Check if user needs to complete onboarding
-  if (user && !user.onboardingCompleted && matches && rest.path !== "/onboarding") {
-    console.log("User needs onboarding, redirecting to /onboarding");
+  if (user && !user.onboardingCompleted && matches && rest.path !== "/onboarding" && rest.path !== "/update-password") {
+    console.log(`User needs onboarding. Current path: ${rest.path}. Redirecting to /onboarding.`);
     return <Redirect to="/onboarding" />;
   }
 
@@ -109,6 +109,7 @@ function Router({ openAuthModal }: { openAuthModal: (view: "login" | "register" 
     // Parse query parameters
     const searchParams = new URLSearchParams(window.location.search);
     const authParam = searchParams.get('auth');
+    const skipOnboarding = searchParams.get('skipOnboarding') === 'true';
     
     // Handle auth query parameter (e.g., ?auth=reset-password)
     if (authParam && (authParam === 'login' || authParam === 'register' || authParam === 'reset-password')) {
@@ -123,10 +124,16 @@ function Router({ openAuthModal }: { openAuthModal: (view: "login" | "register" 
       return;
     }
     
-    // Handle onboarding redirection for authenticated users
-    if (user && !user.onboardingCompleted && location !== "/onboarding" && location !== "/update-password") {
-      console.log("User needs onboarding, redirecting to /onboarding");
-      navigate("/onboarding", { replace: true });
+    // Handle onboarding redirection for authenticated users (unless skipped via query param)
+    if (user && !user.onboardingCompleted && !skipOnboarding) {
+      // Only redirect to onboarding from specific locations, not from error pages
+      const allowedRedirectPaths = ["/", "/dashboard", "/profile-edit", "/messages", "/notifications"];
+      const shouldRedirect = allowedRedirectPaths.includes(location.split('?')[0]) || location.startsWith("/profile/");
+      
+      if (shouldRedirect && location !== "/onboarding" && location !== "/update-password") {
+        console.log(`User needs onboarding. Current location: ${location}. Redirecting to /onboarding.`);
+        navigate("/onboarding", { replace: true });
+      }
     }
   }, [user, location, openAuthModal, navigate]);
 

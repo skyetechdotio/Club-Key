@@ -1,13 +1,23 @@
 import { Pool } from 'pg';
-import { drizzle } from 'drizzle-orm/node-postgres';
+import { drizzle, NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from "@shared/schema";
 
-let pool: Pool | null = null;
-let db: ReturnType<typeof drizzle> | null = null;
+// Use a global symbol to store the connection singleton
+const globalForDb = global as unknown as {
+  conn: Pool | undefined;
+  drizzle: NodePgDatabase<typeof schema> | undefined;
+};
 
-if (process.env.DATABASE_URL) {
-  // Create connection pool for Supabase PostgreSQL
-  pool = new Pool({
+// Create a memoized connection pool
+const createConnection = () => {
+  if (!process.env.DATABASE_URL) {
+    console.warn(
+      "DATABASE_URL is not set. Database functionality will be disabled. This is for UI testing only.",
+    );
+    return null;
+  }
+
+  const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     // Supabase specific configuration
     ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
@@ -17,9 +27,6 @@ if (process.env.DATABASE_URL) {
     connectionTimeoutMillis: 2000, // Return an error after 2 seconds if connection could not be established
   });
 
-  // Initialize Drizzle ORM with the connection pool and schema
-  db = drizzle(pool, { schema });
-
   // Handle pool errors
   pool.on('error', (err) => {
     console.error('Unexpected error on idle client', err);
@@ -27,19 +34,31 @@ if (process.env.DATABASE_URL) {
   });
 
   console.log('✅ Database connected to Supabase');
-} else {
-  console.warn(
-    "DATABASE_URL is not set. Database functionality will be disabled. This is for UI testing only.",
-  );
+  return pool;
+};
+
+// Create singleton connection - reuse in development to prevent HMR connection leaks
+const conn = globalForDb.conn ?? createConnection();
+if (process.env.NODE_ENV !== 'production') {
+  globalForDb.conn = conn;
 }
+
+// Create a single, memoized drizzle instance
+// This is the key change: we export a single 'db' object
+export const db = conn ? (globalForDb.drizzle ?? drizzle(conn, { schema })) : null;
+
+if (process.env.NODE_ENV !== 'production' && db) {
+  globalForDb.drizzle = db;
+}
+
+// Export pool for backward compatibility
+export const pool = conn;
 
 // Graceful shutdown
 process.on('SIGINT', async () => {
-  if (pool) {
+  if (conn) {
     console.log('Closing database pool...');
-    await pool.end();
+    await conn.end();
   }
   process.exit(0);
 });
-
-export { pool, db };

@@ -65,12 +65,8 @@ export function AuthProvider({ children, openAuthModal }: AuthProviderProps) {
 
   // Helper function to merge Supabase user with profile data
   const mergeUserWithProfile = async (supabaseUser: SupabaseUser): Promise<User> => {
-    console.log('🔀 Starting profile merge for user:', supabaseUser.id);
-    
     try {
-      console.log('📡 Fetching profile from database with timeout...');
-      
-      // Create timeout promise (5 seconds)
+      // Create timeout promise (5 seconds) to prevent hanging
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error('Profile query timeout after 5 seconds')), 5000);
       });
@@ -87,7 +83,7 @@ export function AuthProvider({ children, openAuthModal }: AuthProviderProps) {
       const { data: profile, error } = result as any;
 
       if (error) {
-        console.warn('⚠️ Profile fetch failed, using basic user info:', error.message);
+        console.warn('Profile fetch failed, using basic user info:', error.message);
         return {
           ...supabaseUser,
           isHost: false,
@@ -97,8 +93,6 @@ export function AuthProvider({ children, openAuthModal }: AuthProviderProps) {
         } as User;
       }
 
-      console.log('✅ Profile data fetched successfully');
-      
       // Merge Supabase user data with profile data
       const mergedUser = {
         ...supabaseUser,
@@ -111,10 +105,9 @@ export function AuthProvider({ children, openAuthModal }: AuthProviderProps) {
         username: profile.username,
       } as User;
       
-      console.log('🎯 Profile merge completed successfully for:', mergedUser.email);
       return mergedUser;
     } catch (error) {
-      console.warn('⚠️ Profile merge failed, using fallback user info:', error);
+      console.warn('Profile merge failed, using fallback user info:', error);
       return {
         ...supabaseUser,
         isHost: false,
@@ -164,40 +157,27 @@ export function AuthProvider({ children, openAuthModal }: AuthProviderProps) {
 
   // Set up auth state change listener
   useEffect(() => {
-    console.log('🔄 Setting up auth state change listener');
-    
     // First, check for existing session immediately
     const checkInitialSession = async () => {
-      console.log('🔍 Checking for existing session...');
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
         
         if (error) {
-          console.error('❌ Error getting initial session:', error);
+          console.error('Error getting initial session:', error);
           setIsLoading(false);
           return;
         }
 
-        console.log('📋 Initial session check:', { 
-          hasSession: !!session, 
-          hasUser: !!session?.user,
-          expiresAt: session?.expires_at 
-        });
-
         if (session?.user) {
-          console.log('✅ Initial session found, merging profile data...');
           const mergedUser = await mergeUserWithProfile(session.user);
-          console.log('👤 Initial profile merged successfully:', mergedUser?.email);
           setUser(mergedUser);
         } else {
-          console.log('❌ No initial session found');
           setUser(null);
         }
         
-        console.log('🏁 Initial session check complete, setting isLoading to false');
         setIsLoading(false);
       } catch (error) {
-        console.error('💥 Error in initial session check:', error);
+        console.error('Error in initial session check:', error);
         setIsLoading(false);
       }
     };
@@ -207,38 +187,24 @@ export function AuthProvider({ children, openAuthModal }: AuthProviderProps) {
     
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('🚨 Auth state changed:', event, 'User ID:', session?.user?.id);
-        console.log('📋 Session details:', { 
-          hasSession: !!session, 
-          hasUser: !!session?.user,
-          expiresAt: session?.expires_at 
-        });
+        console.log('Auth state changed:', event);
         
         try {
           if (session?.user) {
-            console.log('✅ User session found, merging profile data...');
             // User is signed in, fetch and merge profile data
             const mergedUser = await mergeUserWithProfile(session.user);
-            console.log('👤 Profile merged successfully:', mergedUser?.email);
             setUser(mergedUser);
           } else {
-            console.log('❌ No user session, setting user to null');
             // User is signed out
             setUser(null);
           }
-          
-          // Don't set loading to false here since we handle it in initial check
-          console.log('🔄 Auth state change processed (loading state managed by initial check)');
         } catch (error) {
-          console.error('💥 Error in auth state change handler:', error);
+          console.error('Error in auth state change handler:', error);
         }
       }
     );
 
-    console.log('✅ Auth listener subscription created');
-
     return () => {
-      console.log('🧹 Cleaning up auth subscription');
       subscription.unsubscribe();
     };
   }, []);

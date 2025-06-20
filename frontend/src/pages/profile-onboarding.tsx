@@ -430,7 +430,7 @@ export default function ProfileOnboarding() {
         <div className="flex flex-col items-center justify-center min-h-[60vh]">
           <h1 className="text-2xl font-bold text-neutral-dark mb-2">Profile not found</h1>
           <p className="text-neutral-medium mb-4">Unable to load your profile data</p>
-          <Button onClick={() => navigate("/")}>
+          <Button onClick={() => navigate("/?skipOnboarding=true")}>
             Go Home
           </Button>
         </div>
