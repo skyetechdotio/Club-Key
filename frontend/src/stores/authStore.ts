@@ -84,7 +84,7 @@ const mergeUserWithProfile = async (supabaseUser: SupabaseUser): Promise<User> =
           .single();
           
         const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Profile fetch timeout')), 8000)
+          setTimeout(() => reject(new Error('Profile fetch timeout')), 15000)
         );
         
         const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);

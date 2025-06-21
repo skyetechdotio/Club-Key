@@ -393,7 +393,7 @@ export function useCreateStripePaymentIntent() {
         throw new Error('User not authenticated');
       }
       
-      const response = await fetch('/api/functions/v1/create-payment-intent', {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-payment-intent`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
