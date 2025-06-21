@@ -46,7 +46,7 @@ export default function CreateTeeTimeForm({ initialDate = new Date(), onSuccess 
   const { user } = useAuthStore();
   const { toast } = useToast();
   const createTeeTime = useCreateTeeTime();
-  const [timeValue, setTimeValue] = useState("10:00");
+  const [timeValue, setTimeValue] = useState("10:00 AM");
   
   // Fetch user clubs using Supabase
   const { data: userClubs, isLoading: isLoadingClubs } = useQuery({
@@ -99,7 +99,7 @@ export default function CreateTeeTimeForm({ initialDate = new Date(), onSuccess 
     
     try {
       // Parse time value and adjust the date
-      const [hours, minutes] = timeValue.split(":").map(Number);
+      const { hours, minutes } = convertTo24Hour(timeValue);
       const dateWithTime = new Date(values.date);
       dateWithTime.setHours(hours, minutes);
       
@@ -136,14 +136,38 @@ export default function CreateTeeTimeForm({ initialDate = new Date(), onSuccess 
     }
   };
   
-  // Generate time options for the select (from 6:00 AM to 6:00 PM in 30 min increments)
+  // Helper function to convert 12-hour format to 24-hour format
+  const convertTo24Hour = (time12h: string): { hours: number; minutes: number } => {
+    const [time, modifier] = time12h.split(' ');
+    let [hours, minutes] = time.split(':').map(Number);
+    
+    if (modifier === 'PM' && hours !== 12) {
+      hours += 12;
+    } else if (modifier === 'AM' && hours === 12) {
+      hours = 0;
+    }
+    
+    return { hours, minutes };
+  };
+
+  // Generate time options for the select (from 6:00 AM to 6:30 PM in 30 min increments)
   const generateTimeOptions = () => {
     const options = [];
     for (let hour = 6; hour < 19; hour++) {
       for (let minute = 0; minute < 60; minute += 30) {
-        const formattedHour = hour.toString().padStart(2, '0');
+        let displayHour = hour;
+        let period = 'AM';
+        
+        if (hour >= 12) {
+          period = 'PM';
+          if (hour > 12) {
+            displayHour = hour - 12;
+          }
+        }
+        
+        const formattedHour = displayHour.toString();
         const formattedMinute = minute.toString().padStart(2, '0');
-        options.push(`${formattedHour}:${formattedMinute}`);
+        options.push(`${formattedHour}:${formattedMinute} ${period}`);
       }
     }
     return options;

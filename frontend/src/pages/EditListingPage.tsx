@@ -38,14 +38,45 @@ import { CalendarIcon, Loader2, AlertCircle, Building, MapPin, ArrowLeft } from 
 import { useToast } from "@/hooks/use-toast";
 import { Helmet } from 'react-helmet';
 
-// Time options for tee times
+// Time options for tee times (12-hour format)
 const timeOptions = [
-  "06:00", "06:30", "07:00", "07:30", "08:00", "08:30", 
-  "09:00", "09:30", "10:00", "10:30", "11:00", "11:30",
-  "12:00", "12:30", "13:00", "13:30", "14:00", "14:30",
-  "15:00", "15:30", "16:00", "16:30", "17:00", "17:30",
-  "18:00", "18:30"
+  "6:00 AM", "6:30 AM", "7:00 AM", "7:30 AM", "8:00 AM", "8:30 AM", 
+  "9:00 AM", "9:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM",
+  "12:00 PM", "12:30 PM", "1:00 PM", "1:30 PM", "2:00 PM", "2:30 PM",
+  "3:00 PM", "3:30 PM", "4:00 PM", "4:30 PM", "5:00 PM", "5:30 PM",
+  "6:00 PM", "6:30 PM"
 ];
+
+// Helper function to convert 12-hour format to 24-hour format
+function convertTo24Hour(time12h: string): { hours: number; minutes: number } {
+  const [time, modifier] = time12h.split(' ');
+  let [hours, minutes] = time.split(':').map(Number);
+  
+  if (modifier === 'PM' && hours !== 12) {
+    hours += 12;
+  } else if (modifier === 'AM' && hours === 12) {
+    hours = 0;
+  }
+  
+  return { hours, minutes };
+}
+
+// Helper function to convert 24-hour format to 12-hour format for display
+function convertTo12Hour(hours: number, minutes: number): string {
+  let period = 'AM';
+  let displayHours = hours;
+  
+  if (hours >= 12) {
+    period = 'PM';
+    if (hours > 12) {
+      displayHours = hours - 12;
+    }
+  } else if (hours === 0) {
+    displayHours = 12;
+  }
+  
+  return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
+}
 
 // Status options for tee time listings
 const statusOptions = [
@@ -227,7 +258,7 @@ export default function EditListingPage() {
   useEffect(() => {
     if (listing) {
       const listingDate = new Date(listing.date);
-      const timeString = format(listingDate, "HH:mm");
+      const timeString = convertTo12Hour(listingDate.getHours(), listingDate.getMinutes());
       
       form.reset({
         clubId: listing.club_id.toString(),
@@ -253,7 +284,7 @@ export default function EditListingPage() {
 
     // Combine date and time into a single Date object
     const dateTime = new Date(data.date);
-    const [hours, minutes] = data.time.split(":").map(Number);
+    const { hours, minutes } = convertTo24Hour(data.time);
     dateTime.setHours(hours, minutes, 0, 0);
 
     // Validate that the date/time is in the future (unless it's being cancelled)

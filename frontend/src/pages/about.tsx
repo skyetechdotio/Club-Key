@@ -1,10 +1,24 @@
 import { Helmet } from "react-helmet";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Award, Users, Shield, Calendar } from "lucide-react";
+import { useAuthStore } from "@/stores/authStore";
 import golfBallLogo from "@/assets/new-logo.svg";
 
 export default function AboutPage() {
+  const { user, isAuthenticated, openAuthModal } = useAuthStore();
+  const [, navigate] = useLocation();
+
+  const handleListYourClub = () => {
+    if (isAuthenticated && user) {
+      // User is logged in, redirect to dashboard
+      navigate("/dashboard");
+    } else {
+      // User is not logged in, trigger auth modal
+      openAuthModal("register");
+    }
+  };
+
   return (
     <>
       <Helmet>
@@ -213,9 +227,9 @@ export default function AboutPage() {
               <Link href="/tee-times">
                 <Button size="lg" variant="default">Find Tee Times</Button>
               </Link>
-              <Link href="/dashboard">
-                <Button size="lg" variant="outline">List Your Club</Button>
-              </Link>
+              <Button size="lg" variant="outline" onClick={handleListYourClub}>
+                List Your Club
+              </Button>
             </div>
           </div>
         </div>
