@@ -81,7 +81,7 @@ export default function Footer() {
         
         <div className="border-t border-gray-700 pt-6 flex flex-col md:flex-row justify-between items-center">
           <p className="text-gray-400 text-sm mb-4 md:mb-0">
-            © {new Date().getFullYear()} Linx, Inc. All rights reserved.
+            © {new Date().getFullYear()} Linx, Inc. All rights reserved. v2
           </p>
           <div className="flex flex-wrap justify-center gap-4">
             <Link href="/privacy-policy" className="text-gray-400 hover:text-white text-sm transition-all">
