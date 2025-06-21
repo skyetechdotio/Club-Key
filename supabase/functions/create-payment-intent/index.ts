@@ -111,28 +111,23 @@ serve(async (req) => {
     const hostPricePerPlayer = teeTime.price
     const hostTotalPrice = hostPricePerPlayer * numberOfPlayers
     
-    // Guest fee: 5% of host price
+    // Guest fee: 5% of host price (paid by guest)
     const guestFee = Math.round(hostTotalPrice * 0.05 * 100) / 100
     
     // Total amount guest pays (host price + guest fee)
     const totalAmount = hostTotalPrice + guestFee
     
-    // Application fee: 10% of host price (host fee) + 5% of host price (guest fee) = 15% total
-    const applicationFee = Math.round(hostTotalPrice * 0.15 * 100) / 100
+    // Platform fee: 10% of host price (deducted from host payout later)
+    const platformFee = Math.round(hostTotalPrice * 0.10 * 100) / 100
 
     // Convert to cents for Stripe
     const totalAmountCents = Math.round(totalAmount * 100)
-    const applicationFeeCents = Math.round(applicationFee * 100)
 
-    // Create PaymentIntent with manual capture for escrow
+    // Create PaymentIntent with manual capture for escrow (platform collection model)
     const paymentIntent = await stripe.paymentIntents.create({
       amount: totalAmountCents,
       currency: 'usd',
       capture_method: 'manual', // This enables escrow - payment is authorized but not captured
-      application_fee_amount: applicationFeeCents,
-      transfer_data: {
-        destination: host.stripe_connect_id,
-      },
       metadata: {
         tee_time_id: teeTimeId.toString(),
         guest_id: user.id,
@@ -141,7 +136,8 @@ serve(async (req) => {
         club_name: teeTime.clubs?.name || 'Unknown Club',
         host_price_per_player: hostPricePerPlayer.toString(),
         guest_fee: guestFee.toString(),
-        application_fee: applicationFee.toString(),
+        platform_fee: platformFee.toString(),
+        payment_model: 'platform_collection',
         platform: 'clubkey'
       },
       description: `Tee time at ${teeTime.clubs?.name || 'Golf Club'} - ${numberOfPlayers} player(s)`,
@@ -195,7 +191,7 @@ serve(async (req) => {
         amount: totalAmount,
         host_amount: hostTotalPrice,
         guest_fee: guestFee,
-        application_fee: applicationFee,
+        platform_fee: platformFee,
         success: true
       }),
       {

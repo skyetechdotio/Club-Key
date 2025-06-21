@@ -76,3 +76,5 @@ junit.xml
 .repomixignore
 
 repomix-output.md
+repomix-output.xml
+.vercel

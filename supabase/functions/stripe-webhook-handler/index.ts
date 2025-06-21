@@ -180,6 +180,15 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent,
 
   console.log(`Successfully processed payment success for booking ${booking.id}`)
 
+  // Schedule host payout after 24 hours (escrow period)
+  // In production, you would use a job queue or scheduled function
+  // For now, we'll add a TODO note about this requirement
+  
+  // TODO: Schedule host payout after 24 hours using:
+  // - Supabase cron job or
+  // - External job queue system or
+  // - Scheduled Edge Function
+  
   // TODO: Send confirmation notifications to guest and host
   // TODO: Create calendar events
   // TODO: Send confirmation emails
