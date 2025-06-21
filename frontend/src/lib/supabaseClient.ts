@@ -78,9 +78,14 @@ export const getCurrentUserProfile = async () => {
 // Export types for better TypeScript support
 export type { User, Session, AuthError } from '@supabase/supabase-js';
 
-// Log successful initialization in development
-if (import.meta.env.DEV) {
-  console.log('✅ Supabase client initialized successfully');
-  console.log('🔗 URL:', supabaseUrl);
-  console.log('🔑 Anon Key:', supabaseAnonKey ? '***configured***' : 'missing');
+// Always log initialization to debug production issues
+console.log('✅ Supabase client initialized');
+console.log('🔗 URL:', supabaseUrl);
+console.log('🔑 Anon Key:', supabaseAnonKey ? supabaseAnonKey.substring(0, 20) + '...' : 'missing');
+
+// Validate URL format
+if (supabaseUrl.includes('postgresql://')) {
+  console.error('❌ CRITICAL ERROR: Database URL is being used instead of Supabase API URL!');
+  console.error('Expected format: https://[project-ref].supabase.co');
+  console.error('Received:', supabaseUrl);
 } 
