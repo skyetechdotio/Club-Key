@@ -1,6 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { queryClient } from "@/lib/queryClient";
+import { supabase } from "@/lib/supabaseClient";
 
 export interface TeeTimeListing {
   id: number;
@@ -121,17 +122,47 @@ export function useTeeTimeListings(filters?: TeeTimeSearchFilters) {
 // Fetch a single tee time listing by ID
 export function useTeeTimeListing(id?: number) {
   return useQuery({
-    queryKey: [`/api/tee-times/${id}`],
+    queryKey: ['tee-time-listing', id],
     queryFn: async () => {
-      if (!id) return null;
+      console.log('🔍 [useTeeTimeListing] Fetching tee time with ID:', id);
       
-      const response = await fetch(`/api/tee-times/${id}`);
+      if (!id) {
+        console.log('🔍 [useTeeTimeListing] No ID provided, returning null');
+        return null;
+      }
       
-      if (!response.ok) {
+      const { data, error } = await supabase
+        .from('tee_time_listings')
+        .select(`
+          *,
+          host:host_id (
+            id,
+            first_name,
+            last_name,
+            username,
+            profile_image_url,
+            bio,
+            stripe_connect_id
+          ),
+          clubs (
+            id,
+            name,
+            location,
+            description,
+            image_url
+          )
+        `)
+        .eq('id', id)
+        .single();
+      
+      if (error) {
+        console.error('🔍 [useTeeTimeListing] Error fetching tee time listing:', error);
+        console.error('🔍 [useTeeTimeListing] Error details:', JSON.stringify(error, null, 2));
         throw new Error('Failed to fetch tee time listing');
       }
       
-      return response.json();
+      console.log('🔍 [useTeeTimeListing] Successfully fetched tee time:', data);
+      return data;
     },
     enabled: !!id,
   });
@@ -371,6 +402,96 @@ export function useCreatePaymentIntent() {
       }
       return response.json();
     },
+  });
+}
+
+// Fetch user bookings from Supabase
+export function useUserBookingsSupabase(userId?: string) {
+  return useQuery({
+    queryKey: ['supabase:bookings:user', userId],
+    queryFn: async () => {
+      if (!userId) return [];
+      
+      console.log('🔍 [useUserBookingsSupabase] Fetching bookings for user:', userId);
+      
+      const { data, error } = await supabase
+        .from('bookings')
+        .select(`
+          *,
+          tee_time_listings (
+            *,
+            clubs (
+              id,
+              name,
+              location,
+              image_url
+            ),
+            host:host_id (
+              id,
+              first_name,
+              last_name,
+              username,
+              profile_image_url
+            )
+          )
+        `)
+        .eq('guest_id', userId)
+        .order('created_at', { ascending: false });
+      
+      if (error) {
+        console.error('🔍 [useUserBookingsSupabase] Error fetching bookings:', error);
+        throw new Error('Failed to fetch user bookings');
+      }
+      
+      console.log('🔍 [useUserBookingsSupabase] Successfully fetched bookings:', data);
+      return data;
+    },
+    enabled: !!userId,
+  });
+}
+
+// Fetch host bookings from Supabase
+export function useHostBookingsSupabase(hostId?: string) {
+  return useQuery({
+    queryKey: ['supabase:bookings:host', hostId],
+    queryFn: async () => {
+      if (!hostId) return [];
+      
+      console.log('🔍 [useHostBookingsSupabase] Fetching bookings for host:', hostId);
+      
+      const { data, error } = await supabase
+        .from('bookings')
+        .select(`
+          *,
+          guest:guest_id (
+            id,
+            first_name,
+            last_name,
+            username,
+            profile_image_url
+          ),
+          tee_time_listings!inner (
+            *,
+            clubs (
+              id,
+              name,
+              location,
+              image_url
+            )
+          )
+        `)
+        .eq('tee_time_listings.host_id', hostId)
+        .order('created_at', { ascending: false });
+      
+      if (error) {
+        console.error('🔍 [useHostBookingsSupabase] Error fetching bookings:', error);
+        throw new Error('Failed to fetch host bookings');
+      }
+      
+      console.log('🔍 [useHostBookingsSupabase] Successfully fetched bookings:', data);
+      return data;
+    },
+    enabled: !!hostId,
   });
 }
 

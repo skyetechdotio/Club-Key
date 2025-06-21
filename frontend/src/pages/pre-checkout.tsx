@@ -3,6 +3,7 @@ import { useParams, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { AlertCircle, ArrowLeft, CalendarDays, Clock, Loader2, Users, Shield, Info } from "lucide-react";
 import { formatDate, formatTime } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -11,11 +12,16 @@ import { useTeeTimeListing, useBookTeeTime, BookTeeTimeData } from "@/hooks/use-
 import { Helmet } from 'react-helmet';
 
 export default function PreCheckoutPage() {
+  console.log('🔍 [PreCheckoutPage] Component rendered');
+  
   const { teeTimeId } = useParams<{ teeTimeId: string }>();
   const [, navigate] = useLocation();
   const { user, isAuthenticated, openAuthModal } = useAuthStore();
   const { toast } = useToast();
   const [bookingInfo, setBookingInfo] = useState<BookTeeTimeData | null>(null);
+  const [hasAttemptedLoad, setHasAttemptedLoad] = useState(false);
+  
+  console.log('🔍 [PreCheckoutPage] Params:', { teeTimeId });
   
   // Hook for creating the booking
   const { mutate: createBooking, isPending: isCreatingBooking } = useBookTeeTime();
@@ -26,10 +32,14 @@ export default function PreCheckoutPage() {
 
   // Load booking info from localStorage on mount
   useEffect(() => {
+    console.log('🔍 [PreCheckoutPage] Loading booking info from localStorage');
     const bookingInfoStr = localStorage.getItem('pendingBookingInfo');
+    console.log('🔍 [PreCheckoutPage] Raw localStorage data:', bookingInfoStr);
+    
     if (bookingInfoStr) {
       try {
         const parsedInfo = JSON.parse(bookingInfoStr);
+        console.log('🔍 [PreCheckoutPage] Parsed booking info:', parsedInfo);
         setBookingInfo(parsedInfo);
       } catch (error) {
         console.error('Failed to parse booking info from localStorage:', error);
@@ -40,20 +50,28 @@ export default function PreCheckoutPage() {
         });
         navigate(`/tee-times/${teeTimeId}`);
       }
+    } else {
+      console.log('🔍 [PreCheckoutPage] No booking info found in localStorage');
     }
+    
+    // Mark that we've attempted to load from localStorage
+    setHasAttemptedLoad(true);
   }, [navigate, teeTimeId, toast]);
 
-  // Redirect to login if not authenticated
-  useEffect(() => {
-    if (!isAuthenticated) {
-      openAuthModal("login");
-      navigate("/");
-    }
-  }, [isAuthenticated, openAuthModal, navigate]);
+  // Note: Authentication is handled by ProtectedRoute wrapper in App.tsx
+  // No need for additional auth check here
 
-  // Redirect if no booking info found
+  // Redirect if no booking info found (only after we've attempted to load from localStorage)
   useEffect(() => {
-    if (!bookingInfo && !isLoadingTeeTime && isAuthenticated) {
+    console.log('🔍 [PreCheckoutPage] Checking redirect conditions:', {
+      bookingInfo: !!bookingInfo,
+      isLoadingTeeTime,
+      isAuthenticated,
+      hasAttemptedLoad
+    });
+    
+    if (!bookingInfo && !isLoadingTeeTime && isAuthenticated && hasAttemptedLoad) {
+      console.log('🔍 [PreCheckoutPage] No booking info found after attempted load, redirecting');
       toast({
         title: "Booking Information Missing",
         description: "Please start the booking process from the tee time details page.",
@@ -61,11 +79,18 @@ export default function PreCheckoutPage() {
       });
       navigate(`/tee-times/${teeTimeId}`);
     }
-  }, [bookingInfo, isLoadingTeeTime, isAuthenticated, navigate, teeTimeId, toast]);
+  }, [bookingInfo, isLoadingTeeTime, isAuthenticated, hasAttemptedLoad, navigate, teeTimeId, toast]);
 
   // Verify booking info matches the current tee time
   useEffect(() => {
+    console.log('🔍 [PreCheckoutPage] Checking booking verification:', {
+      bookingInfo: bookingInfo?.teeTimeId,
+      teeTime: teeTime?.id,
+      mismatch: bookingInfo && teeTime && bookingInfo.teeTimeId !== teeTime.id
+    });
+    
     if (bookingInfo && teeTime && bookingInfo.teeTimeId !== teeTime.id) {
+      console.log('🔍 [PreCheckoutPage] Booking mismatch detected, redirecting');
       toast({
         title: "Booking Mismatch",
         description: "The booking information doesn't match this tee time. Please start again.",
@@ -224,12 +249,32 @@ export default function PreCheckoutPage() {
                 <div>
                   <h3 className="font-medium mb-3">Your Host</h3>
                   <div className="bg-gray-50 rounded-lg p-4">
-                    <p className="font-medium">
-                      {teeTime.host?.firstName || teeTime.host?.username || "Host"}
-                    </p>
-                    <p className="text-sm text-neutral-medium">
-                      Club member and verified host
-                    </p>
+                    <div className="flex items-center">
+                      <Avatar className="h-12 w-12 mr-3 border-2 border-white shadow-sm">
+                        <AvatarImage src={teeTime.host?.profile_image_url} alt={
+                          teeTime.host?.first_name && teeTime.host?.last_name
+                            ? `${teeTime.host.first_name} ${teeTime.host.last_name}`
+                            : teeTime.host?.username || "Host"
+                        } />
+                        <AvatarFallback className="bg-primary text-white">
+                          {teeTime.host?.first_name && teeTime.host?.last_name
+                            ? `${teeTime.host.first_name[0]}${teeTime.host.last_name[0]}`
+                            : teeTime.host?.username?.substring(0, 2).toUpperCase() || "H"
+                          }
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p className="font-medium">
+                          {teeTime.host?.first_name && teeTime.host?.last_name
+                            ? `${teeTime.host.first_name} ${teeTime.host.last_name}`
+                            : teeTime.host?.username || "Host"
+                          }
+                        </p>
+                        <p className="text-sm text-neutral-medium">
+                          Club member and verified host
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 </div>
 

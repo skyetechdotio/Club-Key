@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, doublePrecision, jsonb, varchar, index, uuid } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, doublePrecision, numeric, jsonb, varchar, index, uuid } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -113,7 +113,7 @@ export const teeTimeListing = pgTable("tee_time_listings", {
   hostId: uuid("host_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
   clubId: integer("club_id").notNull().references(() => clubs.id, { onDelete: "cascade" }),
   date: timestamp("date").notNull(),
-  price: doublePrecision("price").notNull(),
+  price: numeric("price", { precision: 10, scale: 2 }).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   playersAllowed: integer("players_allowed").notNull().default(4),
   notes: text("notes"),
@@ -149,7 +149,7 @@ export const bookings = pgTable("bookings", {
   stripePaymentIntentId: text("stripe_payment_intent_id"),
   createdAt: timestamp("created_at").defaultNow(),
   completedAt: timestamp("completed_at"),
-  totalPrice: doublePrecision("total_price").notNull(),
+  totalPrice: numeric("total_price", { precision: 10, scale: 2 }).notNull(),
   // Reminder fields
   reminderOneWeek: timestamp("reminder_one_week"),
   reminderOneDay: timestamp("reminder_one_day"),

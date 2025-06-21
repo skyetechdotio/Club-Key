@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuthStore } from "@/stores/authStore";
-import { useUserBookings, useHostBookings, useUpdateTeeTime } from "@/hooks/use-tee-times";
+import { useUserBookings, useHostBookings, useUserBookingsSupabase, useHostBookingsSupabase, useUpdateTeeTime } from "@/hooks/use-tee-times";
 import { useHostTeeTimeListingsSupabase } from "@/hooks/use-profile";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -59,11 +59,9 @@ export default function DashboardPage() {
     return null;
   }
 
-  // Fetch data based on user role
-  // TODO: These hooks expect numeric IDs but we're using UUID strings now
-  // Temporarily disabled to prevent 500 errors
-  const { data: myBookings = [], isLoading: isLoadingBookings = false } = { data: [], isLoading: false }; // useUserBookings(user?.id);
-  const { data: hostBookings = [], isLoading: isLoadingHostBookings = false } = { data: [], isLoading: false }; // useHostBookings(user?.isHost ? user.id : undefined);
+  // Fetch data based on user role using Supabase
+  const { data: myBookings = [], isLoading: isLoadingBookings = false } = useUserBookingsSupabase(user?.id);
+  const { data: hostBookings = [], isLoading: isLoadingHostBookings = false } = useHostBookingsSupabase(user?.isHost ? user.id : undefined);
   
   // Fetch host's tee time listings using Supabase
   const { 
@@ -138,6 +136,9 @@ export default function DashboardPage() {
     switch (status) {
       case 'pending':
         return <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">Pending</Badge>;
+      case 'payment_pending':
+        // Show as "Confirmed" to users since payment has been processed
+        return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">Confirmed</Badge>;
       case 'confirmed':
         return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">Confirmed</Badge>;
       case 'completed':
@@ -299,38 +300,42 @@ export default function DashboardPage() {
                             <div className="flex flex-col md:flex-row justify-between gap-4">
                               <div className="flex-1">
                                 <div className="flex items-center justify-between mb-2">
-                                  <h3 className="font-bold text-lg">{booking.club?.name || booking.teeTime?.club?.name}</h3>
-                                  {getStatusBadge(booking.status)}
+                                  <h3 className="font-bold text-lg">{booking.tee_time_listings?.clubs?.name}</h3>
                                 </div>
-                                <p className="text-neutral-medium">{booking.club?.location || booking.teeTime?.club?.location}</p>
+                                <p className="text-neutral-medium">{booking.tee_time_listings?.clubs?.location}</p>
                                 
                                 <div className="mt-4 space-y-2">
                                   <div className="flex items-center">
                                     <CalendarDays className="h-4 w-4 text-primary mr-2" />
-                                    <span>{formatDate(booking.teeTime?.date)}</span>
+                                    <span>{formatDate(booking.tee_time_listings?.date)}</span>
                                   </div>
                                   <div className="flex items-center">
                                     <Clock className="h-4 w-4 text-primary mr-2" />
-                                    <span>{formatTime(booking.teeTime?.date)}</span>
+                                    <span>{formatTime(booking.tee_time_listings?.date)}</span>
                                   </div>
                                   <div className="flex items-center">
                                     <Users className="h-4 w-4 text-primary mr-2" />
-                                    <span>{booking.numberOfPlayers} player{booking.numberOfPlayers > 1 ? 's' : ''}</span>
+                                    <span>{booking.number_of_players} player{booking.number_of_players > 1 ? 's' : ''}</span>
                                   </div>
                                 </div>
 
                                 <div className="mt-4 flex items-center">
                                   <div className="flex-shrink-0 mr-3">
                                     <Avatar className="h-8 w-8">
-                                      <AvatarImage src={booking.host?.profileImage || booking.teeTime?.host?.profileImage} />
+                                      <AvatarImage src={booking.tee_time_listings?.host?.profile_image_url} />
                                       <AvatarFallback className="bg-primary text-primary-foreground">
-                                        {(booking.host?.firstName?.[0] || booking.teeTime?.host?.firstName?.[0] || "H")}
+                                        {booking.tee_time_listings?.host?.first_name?.[0] || booking.tee_time_listings?.host?.username?.[0] || "H"}
+                                        {booking.tee_time_listings?.host?.last_name?.[0] || booking.tee_time_listings?.host?.username?.[1] || ""}
                                       </AvatarFallback>
                                     </Avatar>
                                   </div>
                                   <div>
                                     <p className="text-sm font-medium">
-                                      Hosted by {booking.host?.firstName || booking.teeTime?.host?.firstName || booking.host?.username || booking.teeTime?.host?.username}
+                                      Hosted by {
+                                        booking.tee_time_listings?.host?.first_name && booking.tee_time_listings?.host?.last_name
+                                          ? `${booking.tee_time_listings.host.first_name} ${booking.tee_time_listings.host.last_name}`
+                                          : booking.tee_time_listings?.host?.username || "Host"
+                                      }
                                     </p>
                                   </div>
                                 </div>
@@ -338,14 +343,14 @@ export default function DashboardPage() {
 
                               <div className="flex flex-col justify-between">
                                 <div className="text-right">
-                                  <p className="text-lg font-bold text-primary">${booking.totalPrice}</p>
+                                  <p className="text-lg font-bold text-primary">${parseFloat(booking.total_price).toFixed(2)}</p>
                                   <p className="text-sm text-neutral-medium">
-                                    ${booking.teeTime?.price || (booking.totalPrice / booking.numberOfPlayers)} per player
+                                    ${parseFloat(booking.tee_time_listings?.price || (booking.total_price / booking.number_of_players)).toFixed(2)} per player
                                   </p>
                                 </div>
 
                                 <div className="mt-4 space-y-2">
-                                  <Link href={`/messages/${booking.teeTime?.hostId || booking.host?.id}`}>
+                                  <Link href={`/messages/${booking.tee_time_listings?.host?.id}`}>
                                     <Button variant="outline" className="w-full">
                                       <MessageSquare className="mr-2 h-4 w-4" /> Message Host
                                     </Button>
@@ -406,37 +411,41 @@ export default function DashboardPage() {
                               <div className="flex flex-col md:flex-row justify-between gap-4">
                                 <div className="flex-1">
                                   <div className="flex items-center justify-between mb-2">
-                                    <h3 className="font-bold text-lg">{booking.teeTime?.club?.name}</h3>
-                                    {getStatusBadge(booking.status)}
+                                    <h3 className="font-bold text-lg">{booking.tee_time_listings?.clubs?.name}</h3>
                                   </div>
                                   
                                   <div className="mt-4 space-y-2">
                                     <div className="flex items-center">
                                       <CalendarDays className="h-4 w-4 text-primary mr-2" />
-                                      <span>{formatDate(booking.teeTime?.date)}</span>
+                                      <span>{formatDate(booking.tee_time_listings?.date)}</span>
                                     </div>
                                     <div className="flex items-center">
                                       <Clock className="h-4 w-4 text-primary mr-2" />
-                                      <span>{formatTime(booking.teeTime?.date)}</span>
+                                      <span>{formatTime(booking.tee_time_listings?.date)}</span>
                                     </div>
                                     <div className="flex items-center">
                                       <Users className="h-4 w-4 text-primary mr-2" />
-                                      <span>{booking.numberOfPlayers} player{booking.numberOfPlayers > 1 ? 's' : ''}</span>
+                                      <span>{booking.number_of_players} player{booking.number_of_players > 1 ? 's' : ''}</span>
                                     </div>
                                   </div>
 
                                   <div className="mt-4 flex items-center">
                                     <div className="flex-shrink-0 mr-3">
                                       <Avatar className="h-8 w-8">
-                                        <AvatarImage src={booking.guest?.profileImage} />
+                                        <AvatarImage src={booking.guest?.profile_image_url} />
                                         <AvatarFallback className="bg-primary text-primary-foreground">
-                                          {booking.guest?.firstName?.[0] || booking.guest?.username?.[0] || "G"}
+                                          {booking.guest?.first_name?.[0] || booking.guest?.username?.[0] || "G"}
+                                          {booking.guest?.last_name?.[0] || booking.guest?.username?.[1] || ""}
                                         </AvatarFallback>
                                       </Avatar>
                                     </div>
                                     <div>
                                       <p className="text-sm font-medium">
-                                        Booked by {booking.guest?.firstName || booking.guest?.username}
+                                        Booked by {
+                                          booking.guest?.first_name && booking.guest?.last_name
+                                            ? `${booking.guest.first_name} ${booking.guest.last_name}`
+                                            : booking.guest?.username || "Guest"
+                                        }
                                       </p>
                                     </div>
                                   </div>
@@ -444,14 +453,14 @@ export default function DashboardPage() {
 
                                 <div className="flex flex-col justify-between">
                                   <div className="text-right">
-                                    <p className="text-lg font-bold text-primary">${booking.totalPrice}</p>
+                                    <p className="text-lg font-bold text-primary">${parseFloat(booking.total_price).toFixed(2)}</p>
                                     <p className="text-sm text-neutral-medium">
-                                      ${booking.teeTime?.price} per player
+                                      ${parseFloat(booking.tee_time_listings?.price || (booking.total_price / booking.number_of_players)).toFixed(2)} per player
                                     </p>
                                   </div>
 
                                   <div className="mt-4 space-y-2">
-                                    <Link href={`/messages/${booking.guestId}`}>
+                                    <Link href={`/messages/${booking.guest?.id}`}>
                                       <Button variant="outline" className="w-full">
                                         <MessageSquare className="mr-2 h-4 w-4" /> Message Guest
                                       </Button>
@@ -523,7 +532,6 @@ export default function DashboardPage() {
                                         <Building className="h-5 w-5 mr-2 text-primary" />
                                         {teeTime.clubs?.name}
                                       </h3>
-                                      {getStatusBadge(teeTime.status)}
                                     </div>
                                     
                                     {teeTime.clubs?.location && (

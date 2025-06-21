@@ -50,10 +50,12 @@ export function ChatProvider({ children }: ChatProviderProps) {
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    if (isAuthenticated && user) {
-      connect();
-      return () => disconnect();
-    }
+    // TODO: Replace with Supabase Realtime implementation
+    // Commenting out WebSocket connection for now
+    // if (isAuthenticated && user) {
+    //   connect();
+    //   return () => disconnect();
+    // }
   }, [isAuthenticated, user?.id]);
 
   const connect = () => {

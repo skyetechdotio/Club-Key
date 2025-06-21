@@ -26,6 +26,7 @@ export interface User extends SupabaseUser {
   isHost: boolean;
   onboardingCompleted?: boolean;
   username?: string;
+  stripe_connect_id?: string | null;
 }
 
 interface RegisterData {
@@ -84,7 +85,7 @@ const mergeUserWithProfile = async (supabaseUser: SupabaseUser): Promise<User> =
           .single();
           
         const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Profile fetch timeout')), 15000)
+          setTimeout(() => reject(new Error('Profile fetch timeout')), 30000)
         );
         
         const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
@@ -140,12 +141,31 @@ const mergeUserWithProfile = async (supabaseUser: SupabaseUser): Promise<User> =
       isHost: profile.is_host || false,
       onboardingCompleted: profile.onboarding_completed === true, // Explicit true check
       username: profile.username,
+      stripe_connect_id: profile.stripe_connect_id || null,
     } as User;
     
     console.log('🔍 [authStore] Final merged user onboardingCompleted:', mergedUser.onboardingCompleted);
     return mergedUser;
   } catch (error) {
     console.warn('🔍 [authStore] Profile merge failed, using enhanced fallback user info:', error);
+    
+    // If we already have a user with profile data, preserve it during temporary failures
+    const currentUser = get().user;
+    if (currentUser && currentUser.firstName && currentUser.firstName !== 'User') {
+      console.log('🔍 [authStore] Preserving existing user profile during fetch failure');
+      return {
+        ...supabaseUser,
+        isHost: currentUser.isHost,
+        onboardingCompleted: currentUser.onboardingCompleted,
+        firstName: currentUser.firstName,
+        lastName: currentUser.lastName,
+        username: currentUser.username,
+        bio: currentUser.bio,
+        profileImage: currentUser.profileImage,
+        stripe_connect_id: currentUser.stripe_connect_id,
+      } as User;
+    }
+    
     return {
       ...supabaseUser,
       isHost: false,

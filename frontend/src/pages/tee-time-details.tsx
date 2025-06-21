@@ -38,17 +38,26 @@ export default function TeeTimeDetailsPage() {
   const { toast } = useToast();
   const [playerCount, setPlayerCount] = useState("1");
   
+  console.log('🔍 [TeeTimeDetailsPage] Component rendered with params:', { id, teeTimeId });
+  console.log('🔍 [TeeTimeDetailsPage] ID type:', typeof id, 'parsed ID:', teeTimeId, 'isNaN:', isNaN(teeTimeId));
+  
   const { data: teeTime, isLoading, error } = useTeeTimeListing(teeTimeId);
   const { mutate: bookTeeTime, isPending: isBooking } = useBookTeeTime();
+  
+  console.log('🔍 [TeeTimeDetailsPage] Query state:', { teeTime, isLoading, error });
 
   const handleBookNow = () => {
+    console.log('🔍 [handleBookNow] Button clicked', { isAuthenticated, user: user?.id, teeTime: teeTime?.id });
+    
     if (!isAuthenticated) {
+      console.log('🔍 [handleBookNow] Not authenticated, opening auth modal');
       openAuthModal("login");
       return;
     }
     
     // Can't book your own tee time
-    if (user && teeTime && user.id === teeTime.hostId) {
+    if (user && teeTime && user.id === teeTime.host_id) {
+      console.log('🔍 [handleBookNow] Cannot book own tee time');
       toast({
         title: "Cannot book your own tee time",
         description: "You cannot book a tee time that you are hosting.",
@@ -69,10 +78,10 @@ export default function TeeTimeDetailsPage() {
       }
       
       // Check for valid player count
-      if (!playerCount || parseInt(playerCount) < 1 || parseInt(playerCount) > teeTime.playersAllowed) {
+      if (!playerCount || parseInt(playerCount) < 1 || parseInt(playerCount) > teeTime.players_allowed) {
         toast({
           title: "Invalid player count",
-          description: `Please select between 1 and ${teeTime.playersAllowed} players.`,
+          description: `Please select between 1 and ${teeTime.players_allowed} players.`,
           variant: "destructive",
         });
         return;
@@ -86,9 +95,11 @@ export default function TeeTimeDetailsPage() {
         totalPrice: teeTime.price * parseInt(playerCount),
       };
       
+      console.log('🔍 [handleBookNow] Storing booking info:', bookingInfo);
       localStorage.setItem('pendingBookingInfo', JSON.stringify(bookingInfo));
       
       // Navigate to pre-checkout page for booking confirmation
+      console.log('🔍 [handleBookNow] Navigating to pre-checkout:', `/pre-checkout/${teeTime.id}`);
       navigate(`/pre-checkout/${teeTime.id}`);
     }
   };
@@ -105,8 +116,8 @@ export default function TeeTimeDetailsPage() {
   };
 
   const getHostInitials = () => {
-    if (teeTime?.host?.firstName && teeTime?.host?.lastName) {
-      return `${teeTime.host.firstName[0]}${teeTime.host.lastName[0]}`;
+    if (teeTime?.host?.first_name && teeTime?.host?.last_name) {
+      return `${teeTime.host.first_name[0]}${teeTime.host.last_name[0]}`;
     }
     if (teeTime?.host?.username) {
       return teeTime.host.username.substring(0, 2).toUpperCase();
@@ -114,8 +125,8 @@ export default function TeeTimeDetailsPage() {
     return "";
   };
   
-  const hostName = teeTime?.host?.firstName && teeTime?.host?.lastName
-    ? `${teeTime.host.firstName} ${teeTime.host.lastName}`
+  const hostName = teeTime?.host?.first_name && teeTime?.host?.last_name
+    ? `${teeTime.host.first_name} ${teeTime.host.last_name}`
     : teeTime?.host?.username || "";
 
   if (isLoading) {
@@ -146,8 +157,8 @@ export default function TeeTimeDetailsPage() {
   return (
     <>
       <Helmet>
-        <title>{teeTime.club?.name} Tee Time | ClubKey</title>
-        <meta name="description" content={`Book a tee time at ${teeTime.club?.name} hosted by ${hostName}. ${teeTime.club?.location}. Available on ${formatDate(new Date(teeTime.date), {month: 'long', day: 'numeric', year: 'numeric'})} at ${formatTime(new Date(teeTime.date))}.`} />
+        <title>{teeTime.clubs?.name} Tee Time | ClubKey</title>
+        <meta name="description" content={`Book a tee time at ${teeTime.clubs?.name} hosted by ${hostName}. ${teeTime.clubs?.location}. Available on ${formatDate(new Date(teeTime.date), {month: 'long', day: 'numeric', year: 'numeric'})} at ${formatTime(new Date(teeTime.date))}.`} />
       </Helmet>
       
       <div className="container mx-auto px-4 py-6">
@@ -179,17 +190,17 @@ export default function TeeTimeDetailsPage() {
               </div>
               
               <h1 className="text-2xl md:text-3xl font-heading font-bold text-neutral-dark">
-                {teeTime.club?.name}
+                {teeTime.clubs?.name}
               </h1>
               
               <div className="flex items-center text-neutral-medium mt-1">
                 <MapPin className="h-4 w-4 mr-1" />
-                <span>{teeTime.club?.location}</span>
+                <span>{teeTime.clubs?.location}</span>
                 <span className="mx-2">•</span>
                 <div className="flex items-center">
                   <Star className="text-yellow-400 mr-1 h-4 w-4" />
-                  <span className="font-medium">{teeTime.hostRating.toFixed(1)}</span>
-                  <span className="ml-1">({teeTime.reviewCount} reviews)</span>
+                  <span className="font-medium">{(teeTime.host_rating || 0).toFixed(1)}</span>
+                  <span className="ml-1">({teeTime.review_count || 0} reviews)</span>
                 </div>
               </div>
             </div>
@@ -197,8 +208,8 @@ export default function TeeTimeDetailsPage() {
             {/* Club Image */}
             <div className="rounded-lg overflow-hidden h-[300px] mb-6 shadow-md">
               <img
-                src={teeTime.club?.imageUrl || "https://images.unsplash.com/photo-1535131749006-b7f58c99034b?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&h=800"}
-                alt={teeTime.club?.name}
+                src={teeTime.clubs?.image_url || "https://images.unsplash.com/photo-1535131749006-b7f58c99034b?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&h=800"}
+                alt={teeTime.clubs?.name}
                 className="w-full h-full object-cover"
               />
             </div>
@@ -235,7 +246,7 @@ export default function TeeTimeDetailsPage() {
                       <Users className="h-4 w-4 text-primary mr-1.5" />
                       <p className="text-sm font-medium">Players</p>
                     </div>
-                    <p className="text-neutral-medium text-sm">Up to {teeTime.playersAllowed} players</p>
+                    <p className="text-neutral-medium text-sm">Up to {teeTime.players_allowed} players</p>
                   </div>
                   
                   <div className="bg-gray-50 rounded-lg p-3 shadow-sm border">
@@ -250,7 +261,7 @@ export default function TeeTimeDetailsPage() {
                 <div>
                   <h3 className="text-lg font-medium mb-2">About This Tee Time</h3>
                   <p className="text-neutral-medium">
-                    {teeTime.notes || `Experience the magnificent ${teeTime.club?.name} golf course, normally accessible only to members. This exclusive tee time is hosted by a verified club member, giving you the opportunity to play at one of the area's most prestigious courses.`}
+                    {teeTime.notes || `Experience the magnificent ${teeTime.clubs?.name} golf course, normally accessible only to members. This exclusive tee time is hosted by a verified club member, giving you the opportunity to play at one of the area's most prestigious courses.`}
                   </p>
                 </div>
                 
@@ -367,9 +378,9 @@ export default function TeeTimeDetailsPage() {
               <TabsContent value="course">
                 <div className="space-y-4">
                   <div>
-                    <h3 className="text-lg font-medium mb-2">About {teeTime.club?.name}</h3>
+                    <h3 className="text-lg font-medium mb-2">About {teeTime.clubs?.name}</h3>
                     <p className="text-neutral-medium">
-                      {teeTime.club?.description || `${teeTime.club?.name} is a prestigious golf club offering exquisite views and a challenging course. Known for its impeccable greens and strategic layout, this club provides an exceptional golfing experience in ${teeTime.club?.location}.`}
+                      {teeTime.clubs?.description || `${teeTime.clubs?.name} is a prestigious golf club offering exquisite views and a challenging course. Known for its impeccable greens and strategic layout, this club provides an exceptional golfing experience in ${teeTime.clubs?.location}.`}
                     </p>
                   </div>
                   
@@ -377,31 +388,31 @@ export default function TeeTimeDetailsPage() {
                     <div className="bg-gray-50 rounded-lg p-4 border">
                       <h4 className="font-medium mb-3">Course Details</h4>
                       <div className="space-y-2 text-sm">
-                        {teeTime.club?.courseType && (
+                        {teeTime.clubs?.courseType && (
                         <div className="flex justify-between">
                           <span className="text-neutral-medium">Type</span>
                           <span className="font-medium">{teeTime.club.courseType || "18-hole"}</span>
                         </div>
                       )}
-                      {teeTime.club?.coursePar && (
+                      {teeTime.clubs?.coursePar && (
                         <div className="flex justify-between">
                           <span className="text-neutral-medium">Par</span>
                           <span className="font-medium">{teeTime.club.coursePar || "72"}</span>
                         </div>
                       )}
-                      {teeTime.club?.courseLength && (
+                      {teeTime.clubs?.courseLength && (
                         <div className="flex justify-between">
                           <span className="text-neutral-medium">Length</span>
                           <span className="font-medium">{teeTime.club.courseLength}</span>
                         </div>
                       )}
-                      {teeTime.club?.courseRating && (
+                      {teeTime.clubs?.courseRating && (
                         <div className="flex justify-between">
                           <span className="text-neutral-medium">Rating</span>
                           <span className="font-medium">{teeTime.club.courseRating}</span>
                         </div>
                       )}
-                      {teeTime.club?.grassType && (
+                      {teeTime.clubs?.grassType && (
                         <div className="flex justify-between">
                           <span className="text-neutral-medium">Grass Type</span>
                           <span className="font-medium">{teeTime.club.grassType}</span>
@@ -413,7 +424,7 @@ export default function TeeTimeDetailsPage() {
                     <div className="bg-gray-50 rounded-lg p-4 border">
                       <h4 className="font-medium mb-3">Amenities</h4>
                       <div className="grid grid-cols-2 gap-y-2 text-sm">
-                        {teeTime.club?.amenities ? (
+                        {teeTime.clubs?.amenities ? (
                           // If we have amenities from the API, use them
                           <>
                             {teeTime.club.amenities.split(',').map((amenity, index) => (
@@ -486,7 +497,7 @@ export default function TeeTimeDetailsPage() {
                         <SelectValue placeholder="Select number of players" />
                       </SelectTrigger>
                       <SelectContent>
-                        {[...Array(teeTime.playersAllowed)].map((_, i) => (
+                        {[...Array(teeTime.players_allowed)].map((_, i) => (
                           <SelectItem key={i + 1} value={(i + 1).toString()}>
                             {i + 1} {i === 0 ? "player" : "players"}
                           </SelectItem>
